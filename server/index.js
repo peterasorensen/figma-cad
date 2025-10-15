@@ -240,21 +240,35 @@ io.on('connection', (socket) => {
     try {
       const { id, ...updateData } = data
 
-      const { error } = await supabase
-        .from('objects')
-        .update(updateData)
-        .eq('id', id)
-        .eq('canvas_id', session.canvasId) // Ensure user can only update objects in their canvas
+      // Throttle object updates to reduce database load
+      const updateKey = `${id}-${session.canvasId}`
 
-      if (error) throw error
+      if (objectUpdates.has(updateKey)) {
+        clearTimeout(objectUpdates.get(updateKey))
+      }
 
-      // Broadcast to all users in canvas (except sender)
-      socket.to(`canvas:${session.canvasId}`).emit('object-updated', data)
+      objectUpdates.set(updateKey, setTimeout(async () => {
+        try {
+          const { error } = await supabase
+            .from('objects')
+            .update(updateData)
+            .eq('id', id)
+            .eq('canvas_id', session.canvasId) // Ensure user can only update objects in their canvas
 
-      console.log(`Object ${id} updated in canvas ${session.canvasId}`)
+          if (error) throw error
+
+          // Broadcast to other users in canvas (don't send back to sender to avoid conflicts)
+          socket.to(`canvas:${session.canvasId}`).emit('object-updated', data)
+
+          console.log(`Object ${id} updated in canvas ${session.canvasId}`)
+        } catch (error) {
+          console.error('Error updating object:', error)
+        }
+        objectUpdates.delete(updateKey)
+      }, 100)) // Throttle to 10fps
+
     } catch (error) {
-      console.error('Error updating object:', error)
-      socket.emit('error', { message: 'Failed to update object' })
+      console.error('Error queuing object update:', error)
     }
   })
 
@@ -323,6 +337,11 @@ io.on('connection', (socket) => {
 
 // Throttled user session updates
 const sessionUpdates = new Map()
+// Throttled object updates
+const objectUpdates = new Map()
+// Throttled object creation
+const objectCreationUpdates = new Map()
+
 function updateUserSession(userId, canvasId, cursorData) {
   const key = `${userId}-${canvasId}`
 

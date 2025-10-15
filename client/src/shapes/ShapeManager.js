@@ -227,20 +227,40 @@ export class ShapeManager {
         z: data.position_z || 0
       };
 
+      // Map generic properties to shape-specific properties
       const properties = {
-        color: data.color || '#ffffff',
-        width: data.width || 100,
-        height: data.height || 100,
-        depth: data.depth || 100
+        color: data.color || '#ffffff'
       };
+
+      // Add shape-specific properties based on type
+      switch (data.type) {
+        case 'box':
+        case 'rectangle':
+          properties.width = data.width || 100;
+          properties.height = data.height || 100;
+          properties.depth = data.depth || 100;
+          break;
+        case 'sphere':
+        case 'circle':
+          properties.radius = data.width || 100; // Use width as radius for spheres/circles
+          break;
+        case 'cylinder':
+          properties.radius = data.width || 100; // Use width as radius
+          properties.height = data.height || 100;
+          break;
+      }
 
       // Create shape using existing method
       const shape = this.createShape(data.type, position, properties);
 
       if (shape && data.id) {
-        // Override the generated ID with the remote ID
+        // Remove the old entry and add with the correct ID
+        this.shapes.delete(shape.id);
         shape.id = data.id;
         this.shapes.set(data.id, shape);
+
+        // Update mesh userData with correct ID
+        shape.mesh.userData.shapeId = data.id;
 
         // Set additional properties
         if (data.rotation_x !== undefined) shape.mesh.rotation.x = data.rotation_x;
@@ -266,7 +286,10 @@ export class ShapeManager {
   addShapeToScene(shape) {
     if (shape && shape.mesh && !this.scene.children.includes(shape.mesh)) {
       this.scene.add(shape.mesh);
-      this.shapes.set(shape.id, shape);
+      // Only set if not already in map (prevents overwriting existing shapes)
+      if (!this.shapes.has(shape.id)) {
+        this.shapes.set(shape.id, shape);
+      }
       console.log(`Added shape to scene: ${shape.id}`);
     }
   }

@@ -18,7 +18,7 @@ export class CursorManager {
 
   createCursorAssets() {
     // Cursor geometry - a simple ring/donut shape
-    this.cursorGeometry = new THREE.RingGeometry(0.05, 0.1, 16)
+    this.cursorGeometry = new THREE.RingGeometry(0.1, 0.2, 16)
     this.cursorMaterial = new THREE.MeshBasicMaterial({
       color: 0x00ff88,
       side: THREE.DoubleSide,
@@ -27,7 +27,7 @@ export class CursorManager {
     })
 
     // Label geometry for user names
-    this.labelGeometry = new THREE.PlaneGeometry(0.8, 0.3)
+    this.labelGeometry = new THREE.PlaneGeometry(4.8, 1.8)
 
     // User colors for different users
     this.userColors = [
@@ -57,7 +57,7 @@ export class CursorManager {
       const rect = canvas.getBoundingClientRect()
       this.mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1
       this.mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1
-      console.log('🖱️ Mouse moved - normalized coords:', this.mouse.x, this.mouse.y)
+    //   console.log('🖱️ Mouse moved - normalized coords:', this.mouse.x, this.mouse.y)
     })
 
     console.log('🖱️ Mouse tracking setup complete')
@@ -65,7 +65,7 @@ export class CursorManager {
 
   // Convert 2D mouse position to 3D world position on a plane
   get3DPositionFromMouse(distance = 10) {
-    console.log('🖱️ Converting mouse position:', this.mouse.x, this.mouse.y)
+    // console.log('🖱️ Converting mouse position:', this.mouse.x, this.mouse.y)
 
     this.raycaster.setFromCamera(this.mouse, this.camera)
 
@@ -76,9 +76,9 @@ export class CursorManager {
     const intersection = new THREE.Vector3()
     const hasIntersection = this.raycaster.ray.intersectPlane(plane, intersection)
 
-    console.log('🖱️ Camera direction:', cameraDirection.x, cameraDirection.y, cameraDirection.z)
-    console.log('🖱️ Plane normal:', plane.normal.x, plane.normal.y, plane.normal.z)
-    console.log('🖱️ Intersection result:', hasIntersection, intersection.x, intersection.y, intersection.z)
+    // console.log('🖱️ Camera direction:', cameraDirection.x, cameraDirection.y, cameraDirection.z)
+    // console.log('🖱️ Plane normal:', plane.normal.x, plane.normal.y, plane.normal.z)
+    // console.log('🖱️ Intersection result:', hasIntersection, intersection.x, intersection.y, intersection.z)
 
     if (!hasIntersection) {
       console.warn('🖱️ No intersection found, returning origin')
@@ -103,8 +103,8 @@ export class CursorManager {
     })
     const labelMesh = new THREE.Mesh(this.labelGeometry, labelMaterial)
 
-    // Position label slightly above cursor
-    labelMesh.position.set(0, 0.2, 0)
+    // Position label above cursor (adjusted for larger size)
+    labelMesh.position.set(0, 0.8, 0)
 
     // Group cursor and label together
     const cursorGroup = new THREE.Group()
@@ -152,24 +152,24 @@ export class CursorManager {
   createLabelCanvas(text) {
     const canvas = document.createElement('canvas')
     const context = canvas.getContext('2d')
-    canvas.width = 256
-    canvas.height = 64
+    canvas.width = 1536  // 300% larger
+    canvas.height = 384 // 300% larger
 
     // Clear canvas
     context.fillStyle = 'rgba(0, 0, 0, 0)'
     context.fillRect(0, 0, canvas.width, canvas.height)
 
     // Draw text
-    context.font = 'Bold 24px Arial'
+    context.font = 'Bold 144px Arial' // 300% larger
     context.fillStyle = 'white'
     context.textAlign = 'center'
     context.textBaseline = 'middle'
 
     // Add slight shadow for readability
     context.shadowColor = 'rgba(0, 0, 0, 0.5)'
-    context.shadowBlur = 2
-    context.shadowOffsetX = 1
-    context.shadowOffsetY = 1
+    context.shadowBlur = 12
+    context.shadowOffsetX = 6
+    context.shadowOffsetY = 6
 
     context.fillText(text, canvas.width / 2, canvas.height / 2)
 

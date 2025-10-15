@@ -32,6 +32,7 @@ export class App {
     this.remoteObjects = new Map(); // Track remote objects for sync
     this.remoteCursors = new Map(); // Track remote cursors
     this.lastCursorUpdate = Date.now(); // For throttling cursor updates
+    this.lastObjectUpdate = Date.now(); // For throttling object updates
     this.wasAuthenticated = false; // Track previous auth state
     this.onlineUsers = new Set(); // Track online users for presence display
     this.notifications = []; // Track active notifications
@@ -529,7 +530,7 @@ export class App {
 
     // Get 3D position from mouse coordinates
     const worldPosition = this.cursorManager.get3DPositionFromMouse()
-    console.log('🖱️ Updating cursor position:', worldPosition.x, worldPosition.y, worldPosition.z)
+    // console.log('🖱️ Updating cursor position:', worldPosition.x, worldPosition.y, worldPosition.z)
 
     // Update local cursor position for current user
     if (auth.userId && this.cursorManager.getCursor(auth.userId)) {
@@ -728,6 +729,13 @@ export class App {
   }
 
   handleObjectTransform(object) {
+    // Throttle object updates to reduce lag
+    const now = Date.now();
+    if (now - this.lastObjectUpdate < 100) { // Throttle to 10fps
+      return;
+    }
+    this.lastObjectUpdate = now;
+
     // Find the shape that corresponds to this object
     if (this.shapeManager) {
       const shape = this.shapeManager.findShapeByMesh(object);
