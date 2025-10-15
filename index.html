@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CollabCanvas - Collaborative 3D Design</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      overflow: hidden;
+      background: #1a1a1a;
+      color: #ffffff;
+    }
+
+    #app {
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Header */
+    #header {
+      background: #2a2a2a;
+      padding: 12px 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid #3a3a3a;
+      z-index: 100;
+    }
+
+    #header h1 {
+      font-size: 18px;
+      font-weight: 600;
+    }
+
+    #user-info {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .auth-button {
+      background: #3a3a3a;
+      border: none;
+      padding: 8px 16px;
+      border-radius: 4px;
+      cursor: pointer;
+      color: #ffffff;
+      font-size: 14px;
+      transition: background-color 0.2s;
+    }
+
+    .auth-button:hover {
+      background: #4a4a4a;
+    }
+
+    /* Main container */
+    #main-container {
+      flex: 1;
+      display: flex;
+      position: relative;
+      overflow: hidden;
+    }
+
+    /* Canvas container */
+    #canvas-container {
+      flex: 1;
+      position: relative;
+      background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
+    }
+
+    #canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+
+    /* Toolbar */
+    #toolbar {
+      position: absolute;
+      top: 20px;
+      left: 20px;
+      background: rgba(42, 42, 42, 0.95);
+      border: 1px solid #3a3a3a;
+      border-radius: 8px;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      z-index: 10;
+    }
+
+    #toolbar hr {
+      border: none;
+      border-top: 1px solid #4a4a4a;
+      margin: 8px 0;
+    }
+
+    /* Notifications container */
+    #notifications-container {
+      position: absolute;
+      top: 100%;
+      left: -20px;
+      right: -20px;
+      height: 0;
+      overflow: visible;
+      transition: height 0.3s ease;
+      pointer-events: none;
+    }
+
+    .tool-button {
+      background: #3a3a3a;
+      border: none;
+      padding: 10px;
+      border-radius: 6px;
+      cursor: pointer;
+      color: #ffffff;
+      font-size: 14px;
+      transition: background 0.2s;
+    }
+
+    .tool-button:hover {
+      background: #4a4a4a;
+    }
+
+    .tool-button.active {
+      background: #5a8fd6;
+    }
+
+    /* Tooltip */
+    .tooltip {
+      position: relative;
+    }
+
+    .tooltip::after {
+      content: attr(data-tooltip);
+      position: absolute;
+      left: 100%;
+      top: 50%;
+      transform: translateY(-50%);
+      margin-left: 12px;
+      background: rgba(0, 0, 0, 0.9);
+      color: white;
+      padding: 6px 10px;
+      border-radius: 4px;
+      font-size: 12px;
+      white-space: nowrap;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s;
+      z-index: 1000;
+    }
+
+    .tooltip:hover::after {
+      opacity: 1;
+    }
+
+    /* View controls */
+    #view-controls {
+      position: absolute;
+      bottom: 20px;
+      right: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      z-index: 10;
+    }
+
+    .view-button {
+      background: rgba(42, 42, 42, 0.95);
+      border: 1px solid #3a3a3a;
+      border-radius: 6px;
+      padding: 10px;
+      cursor: pointer;
+      color: #ffffff;
+      font-size: 12px;
+      transition: background 0.2s;
+      min-width: 40px;
+      height: 40px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .view-button:hover {
+      background: #4a4a4a;
+    }
+
+    .view-button.active {
+      background: #5a8fd6;
+    }
+
+    /* Status bar */
+    #status-bar {
+      background: #2a2a2a;
+      padding: 8px 20px;
+      border-top: 1px solid #3a3a3a;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 12px;
+      color: #888;
+    }
+
+    #presence {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .presence-indicator {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #4caf50;
+    }
+
+    /* Multiplayer cursors */
+    .multiplayer-cursor {
+      position: absolute;
+      pointer-events: none;
+      z-index: 1000;
+      transition: transform 0.05s linear;
+    }
+
+    .cursor-label {
+      background: rgba(0, 0, 0, 0.8);
+      color: white;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 11px;
+      white-space: nowrap;
+      margin-left: 12px;
+      margin-top: -4px;
+    }
+
+    /* Loading screen */
+    #loading {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: #1a1a1a;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 9999;
+    }
+
+    #loading.hidden {
+      display: none;
+    }
+
+    .spinner {
+      border: 3px solid #3a3a3a;
+      border-top: 3px solid #5a8fd6;
+      border-radius: 50%;
+      width: 40px;
+      height: 40px;
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <div id="loading">
+      <div class="spinner"></div>
+    </div>
+
+    <div id="header">
+      <h1>CollabCanvas</h1>
+      <div id="user-info">
+        <span id="username">Guest</span>
+        <button id="auth-button" class="auth-button">Sign In</button>
+      </div>
+    </div>
+
+    <div id="main-container">
+      <div id="toolbar">
+        <button class="tool-button tooltip" data-tool="select" data-tooltip="Select (V)">Select</button>
+        <button class="tool-button tooltip" data-tool="box" data-tooltip="Box (B)">Box</button>
+        <button class="tool-button tooltip" data-tool="sphere" data-tooltip="Sphere (S)">Sphere</button>
+        <button class="tool-button tooltip" data-tool="cylinder" data-tooltip="Cylinder (C)">Cylinder</button>
+        <button class="tool-button tooltip" data-tool="rectangle" data-tooltip="Rectangle (R)">Rectangle</button>
+        <button class="tool-button tooltip" data-tool="circle" data-tooltip="Circle (O)">Circle</button>
+
+        <hr>
+
+        <div id="canvas-info">
+          <div id="canvas-id" style="font-size: 10px; color: #888; margin-bottom: 4px; word-break: break-all;"></div>
+          <button id="share-canvas" class="tool-button tooltip" data-tooltip="Share Canvas">Share</button>
+        </div>
+
+        <div id="notifications-container"></div>
+      </div>
+
+      <div id="view-controls">
+        <button class="view-button tooltip active" id="grid-toggle" data-tooltip="Toggle Grid (G)">
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
+            <rect x="1" y="1" width="8" height="8" fill="none" stroke="currentColor" stroke-width="1.5"/>
+            <rect x="11" y="1" width="8" height="8" fill="none" stroke="currentColor" stroke-width="1.5"/>
+            <rect x="1" y="11" width="8" height="8" fill="none" stroke="currentColor" stroke-width="1.5"/>
+            <rect x="11" y="11" width="8" height="8" fill="none" stroke="currentColor" stroke-width="1.5"/>
+          </svg>
+        </button>
+      </div>
+
+      <div id="canvas-container">
+        <canvas id="canvas"></canvas>
+      </div>
+    </div>
+
+    <div id="status-bar">
+      <div id="presence">
+        <span class="presence-indicator"></span>
+        <span id="online-count">1 user online</span>
+      </div>
+      <div id="coordinates">X: 0, Y: 0, Z: 0</div>
+      <div id="fps">FPS: 60</div>
+    </div>
+  </div>
+
+  <script type="module" src="/client/src/main.js"></script>
+</body>
+</html>
