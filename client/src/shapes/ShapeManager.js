@@ -1,3 +1,4 @@
+import * as THREE from 'three';
 import { ShapeFactory } from './ShapeFactory.js';
 
 /**
@@ -10,12 +11,13 @@ export class ShapeManager {
     this.factory = new ShapeFactory();
     this.shapes = new Map(); // id -> Shape
     this.selectedShapes = new Set(); // Set of selected shape IDs
+    this.interpolatingShapes = new Map(); // id -> interpolation data
   }
 
   /**
    * Create a new shape and add to scene
    */
-  createShape(type, position = {}, properties = {}) {
+  createShape(type, position = {}, properties = {}, id = null) {
     let shape;
 
     const x = position.x || 0;
@@ -24,19 +26,19 @@ export class ShapeManager {
 
     switch (type) {
       case 'box':
-        shape = this.factory.createBox(x, y, z);
+        shape = this.factory.createBox(x, y, z, id);
         break;
       case 'sphere':
-        shape = this.factory.createSphere(x, y, z);
+        shape = this.factory.createSphere(x, y, z, id);
         break;
       case 'cylinder':
-        shape = this.factory.createCylinder(x, y, z);
+        shape = this.factory.createCylinder(x, y, z, id);
         break;
       case 'rectangle':
-        shape = this.factory.createRectangle(x, z);
+        shape = this.factory.createRectangle(x, z, id);
         break;
       case 'circle':
-        shape = this.factory.createCircle(x, z);
+        shape = this.factory.createCircle(x, z, id);
         break;
       default:
         console.warn(`Unknown shape type: ${type}`);
@@ -52,10 +54,17 @@ export class ShapeManager {
     return shape;
   }
 
+
   /**
    * Remove a shape from the scene
    */
   removeShape(shapeId) {
+    // Cancel any ongoing interpolation for this shape
+    if (this.interpolatingShapes.has(shapeId)) {
+      cancelAnimationFrame(this.interpolatingShapes.get(shapeId).animationId);
+      this.interpolatingShapes.delete(shapeId);
+    }
+
     const shape = this.shapes.get(shapeId);
     if (shape) {
       this.scene.remove(shape.mesh);
@@ -201,6 +210,12 @@ export class ShapeManager {
    * Clear all shapes
    */
   clear() {
+    // Cancel all ongoing interpolations
+    for (const [shapeId, interpolationData] of this.interpolatingShapes.entries()) {
+      cancelAnimationFrame(interpolationData.animationId);
+    }
+    this.interpolatingShapes.clear();
+
     this.shapes.forEach(shape => {
       this.scene.remove(shape.mesh);
       shape.dispose();
@@ -250,18 +265,10 @@ export class ShapeManager {
           break;
       }
 
-      // Create shape using existing method
-      const shape = this.createShape(data.type, position, properties);
+      // Create shape with the correct ID from the start
+      const shape = this.createShape(data.type, position, properties, data.id);
 
-      if (shape && data.id) {
-        // Remove the old entry and add with the correct ID
-        this.shapes.delete(shape.id);
-        shape.id = data.id;
-        this.shapes.set(data.id, shape);
-
-        // Update mesh userData with correct ID
-        shape.mesh.userData.shapeId = data.id;
-
+      if (shape) {
         // Set additional properties
         if (data.rotation_x !== undefined) shape.mesh.rotation.x = data.rotation_x;
         if (data.rotation_y !== undefined) shape.mesh.rotation.y = data.rotation_y;
@@ -301,29 +308,136 @@ export class ShapeManager {
     if (!existingShape || !existingShape.mesh) return;
 
     try {
-      // Update position
-      if (data.position_x !== undefined) existingShape.mesh.position.x = data.position_x;
-      if (data.position_y !== undefined) existingShape.mesh.position.y = data.position_y;
-      if (data.position_z !== undefined) existingShape.mesh.position.z = data.position_z;
+      // For object creation/updates, check if we need smooth interpolation
+      // Only use interpolation if the object already exists and we're updating it
+      // For newly created objects, set position directly
 
-      // Update rotation
-      if (data.rotation_x !== undefined) existingShape.mesh.rotation.x = data.rotation_x;
-      if (data.rotation_y !== undefined) existingShape.mesh.rotation.y = data.rotation_y;
-      if (data.rotation_z !== undefined) existingShape.mesh.rotation.z = data.rotation_z;
+      // Check if this is a significant position change that warrants interpolation
+      const currentPos = existingShape.mesh.position;
+      const hasPositionChange = data.position_x !== undefined && data.position_y !== undefined && data.position_z !== undefined;
+      const positionChanged = hasPositionChange &&
+        (Math.abs(currentPos.x - data.position_x) > 0.01 ||
+         Math.abs(currentPos.y - data.position_y) > 0.01 ||
+         Math.abs(currentPos.z - data.position_z) > 0.01);
 
-      // Update scale
-      if (data.scale_x !== undefined) existingShape.mesh.scale.x = data.scale_x;
-      if (data.scale_y !== undefined) existingShape.mesh.scale.y = data.scale_y;
-      if (data.scale_z !== undefined) existingShape.mesh.scale.z = data.scale_z;
+      if (positionChanged) {
+        // Set position directly for significant changes (faster than interpolation)
+        if (data.position_x !== undefined) existingShape.mesh.position.x = data.position_x;
+        if (data.position_y !== undefined) existingShape.mesh.position.y = data.position_y;
+        if (data.position_z !== undefined) existingShape.mesh.position.z = data.position_z;
 
-      // Update color if it's a material property
-      if (data.color && existingShape.mesh.material) {
-        existingShape.mesh.material.color.setStyle(data.color);
+        // Update other properties
+        if (data.rotation_x !== undefined) existingShape.mesh.rotation.x = data.rotation_x;
+        if (data.rotation_y !== undefined) existingShape.mesh.rotation.y = data.rotation_y;
+        if (data.rotation_z !== undefined) existingShape.mesh.rotation.z = data.rotation_z;
+
+        if (data.scale_x !== undefined) existingShape.mesh.scale.x = data.scale_x;
+        if (data.scale_y !== undefined) existingShape.mesh.scale.y = data.scale_y;
+        if (data.scale_z !== undefined) existingShape.mesh.scale.z = data.scale_z;
+
+        if (data.color && existingShape.mesh.material) {
+          existingShape.mesh.material.color.setStyle(data.color);
+        }
+
+        console.log('Set position directly for', data.id);
+      } else {
+        // Set properties directly for cases without position changes
+        if (data.rotation_x !== undefined) existingShape.mesh.rotation.x = data.rotation_x;
+        if (data.rotation_y !== undefined) existingShape.mesh.rotation.y = data.rotation_y;
+        if (data.rotation_z !== undefined) existingShape.mesh.rotation.z = data.rotation_z;
+
+        if (data.scale_x !== undefined) existingShape.mesh.scale.x = data.scale_x;
+        if (data.scale_y !== undefined) existingShape.mesh.scale.y = data.scale_y;
+        if (data.scale_z !== undefined) existingShape.mesh.scale.z = data.scale_z;
+
+        if (data.color && existingShape.mesh.material) {
+          existingShape.mesh.material.color.setStyle(data.color);
+        }
       }
 
       console.log(`Updated shape from remote data: ${data.id}`);
     } catch (error) {
       console.error('Error updating shape from remote data:', error);
     }
+  }
+
+  /**
+   * Start smooth interpolation for shape properties
+   */
+  startInterpolation(shape, targetData) {
+    const shapeId = shape.id;
+
+    // Cancel any existing interpolation for this shape
+    if (this.interpolatingShapes.has(shapeId)) {
+      cancelAnimationFrame(this.interpolatingShapes.get(shapeId).animationId);
+    }
+
+    const startData = {
+      position: { ...shape.mesh.position },
+      rotation: { ...shape.mesh.rotation },
+      scale: { ...shape.mesh.scale },
+      color: shape.mesh.material ? shape.mesh.material.color.getHex() : null
+    };
+
+    const duration = 100; // 100ms interpolation duration
+    const startTime = Date.now();
+
+    const animate = () => {
+      const elapsed = Date.now() - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+
+      // Use ease-out interpolation for smoother movement
+      const easeProgress = 1 - Math.pow(1 - progress, 3);
+
+      // Interpolate position
+      if (targetData.position_x !== undefined) {
+        shape.mesh.position.x = startData.position.x + (targetData.position_x - startData.position.x) * easeProgress;
+      }
+      if (targetData.position_y !== undefined) {
+        shape.mesh.position.y = startData.position.y + (targetData.position_y - startData.position.y) * easeProgress;
+      }
+      if (targetData.position_z !== undefined) {
+        shape.mesh.position.z = startData.position.z + (targetData.position_z - startData.position.z) * easeProgress;
+      }
+
+      // Interpolate rotation
+      if (targetData.rotation_x !== undefined) {
+        shape.mesh.rotation.x = startData.rotation.x + (targetData.rotation_x - startData.rotation.x) * easeProgress;
+      }
+      if (targetData.rotation_y !== undefined) {
+        shape.mesh.rotation.y = startData.rotation.y + (targetData.rotation_y - startData.rotation.y) * easeProgress;
+      }
+      if (targetData.rotation_z !== undefined) {
+        shape.mesh.rotation.z = startData.rotation.z + (targetData.rotation_z - startData.rotation.z) * easeProgress;
+      }
+
+      // Interpolate scale
+      if (targetData.scale_x !== undefined) {
+        shape.mesh.scale.x = startData.scale.x + (targetData.scale_x - startData.scale.x) * easeProgress;
+      }
+      if (targetData.scale_y !== undefined) {
+        shape.mesh.scale.y = startData.scale.y + (targetData.scale_y - startData.scale.y) * easeProgress;
+      }
+      if (targetData.scale_z !== undefined) {
+        shape.mesh.scale.z = startData.scale.z + (targetData.scale_z - startData.scale.z) * easeProgress;
+      }
+
+      // Update color
+      if (targetData.color && shape.mesh.material) {
+        const startColor = new THREE.Color(startData.color);
+        const targetColor = new THREE.Color(targetData.color);
+        shape.mesh.material.color.copy(startColor).lerp(targetColor, easeProgress);
+      }
+
+      if (progress < 1) {
+        const animationId = requestAnimationFrame(animate);
+        this.interpolatingShapes.set(shapeId, { animationId, targetData });
+      } else {
+        // Interpolation complete
+        this.interpolatingShapes.delete(shapeId);
+      }
+    };
+
+    animate();
   }
 }

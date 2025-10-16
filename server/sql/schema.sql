@@ -45,6 +45,7 @@ CREATE TABLE IF NOT EXISTS user_sessions (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
   canvas_id UUID REFERENCES canvases(id) ON DELETE CASCADE,
+  user_email TEXT,
   cursor_x REAL DEFAULT 0,
   cursor_y REAL DEFAULT 0,
   cursor_z REAL DEFAULT 0,

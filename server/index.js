@@ -99,6 +99,10 @@ io.on('connection', (socket) => {
         .select('*')
         .eq('canvas_id', canvasId)
 
+      // Get user's email for storing in session
+      const { data: userData } = await supabase.auth.admin.getUserById(userId)
+      const userEmail = userData?.user?.email || null
+
       // Update/create session for current user (upsert handles existing sessions)
       console.log(`📝 Upserting session for user ${userId} on canvas ${canvasId}`)
       const { data: sessionData, error: sessionError } = await supabase
@@ -106,6 +110,7 @@ io.on('connection', (socket) => {
         .upsert({
           user_id: userId,
           canvas_id: canvasId,
+          user_email: userEmail,
           cursor_x: 0,
           cursor_y: 0,
           cursor_z: 0,
@@ -159,22 +164,13 @@ io.on('connection', (socket) => {
         sessions: sessions || []
       })
 
-      // Get user's email for the notification
-      const { data: userData } = await supabase.auth.admin.getUserById(userId)
-      const userEmail = userData?.user?.email || `User ${userId.substring(0, 8)}`
+      // Use the email we already fetched for the session (reuse the userEmail variable)
+      const displayEmail = userEmail || `User ${userId.substring(0, 8)}`
 
-      // Notify others about new user (don't notify the user themselves for notifications)
-      // But send to current user for cursor label update
-      socket.emit('user-joined', {
-        userId,
-        userEmail,
-        canvasId
-      })
-
-      // Notify others about new user
+      // Notify others about new user (don't send to current user since their cursor is already in canvas state)
       socket.to(`canvas:${canvasId}`).emit('user-joined', {
         userId,
-        userEmail,
+        userEmail: displayEmail,
         canvasId
       })
 
@@ -222,8 +218,8 @@ io.on('connection', (socket) => {
 
       if (error) throw error
 
-      // Broadcast to all users in canvas
-      io.to(`canvas:${session.canvasId}`).emit('object-created', newObject)
+      // Broadcast to other users in canvas (don't send back to creator to avoid duplicates)
+      socket.to(`canvas:${session.canvasId}`).emit('object-created', newObject)
 
       console.log(`Object created in canvas ${session.canvasId}`)
     } catch (error) {
@@ -265,7 +261,7 @@ io.on('connection', (socket) => {
           console.error('Error updating object:', error)
         }
         objectUpdates.delete(updateKey)
-      }, 100)) // Throttle to 10fps
+      }, 16)) // Throttle to 60fps for smooth dragging
 
     } catch (error) {
       console.error('Error queuing object update:', error)
@@ -288,8 +284,8 @@ io.on('connection', (socket) => {
 
       if (error) throw error
 
-      // Broadcast to all users in canvas
-      io.to(`canvas:${session.canvasId}`).emit('object-deleted', { id })
+      // Broadcast to other users in canvas (don't send back to deleter)
+      socket.to(`canvas:${session.canvasId}`).emit('object-deleted', { id })
 
       console.log(`Object ${id} deleted from canvas ${session.canvasId}`)
     } catch (error) {
@@ -319,13 +315,13 @@ io.on('connection', (socket) => {
       removeUserSession(session.userId, session.canvasId)
 
       // Get user's email for the notification
-      const { data: userData } = await supabase.auth.admin.getUserById(session.userId)
-      const userEmail = userData?.user?.email || `User ${session.userId.substring(0, 8)}`
+      const { data: userDataDisconnect } = await supabase.auth.admin.getUserById(session.userId)
+      const userEmailDisconnect = userDataDisconnect?.user?.email || `User ${session.userId.substring(0, 8)}`
 
       // Notify others
       socket.to(`canvas:${session.canvasId}`).emit('user-left', {
         userId: session.userId,
-        userEmail
+        userEmail: userEmailDisconnect
       })
 
       console.log(`User ${session.userId} left canvas ${session.canvasId} (connections: ${connectionCount})`)
@@ -351,11 +347,21 @@ function updateUserSession(userId, canvasId, cursorData) {
 
   sessionUpdates.set(key, setTimeout(async () => {
     try {
+      // Get user's email for storing in session (only if we don't have it cached)
+      let sessionUserEmail = null
+      try {
+        const { data: userDataSession } = await supabase.auth.admin.getUserById(userId)
+        sessionUserEmail = userDataSession?.user?.email || null
+      } catch (emailError) {
+        console.error('Error fetching user email for session update:', emailError)
+      }
+
       await supabase
         .from('user_sessions')
         .upsert({
           user_id: userId,
           canvas_id: canvasId,
+          user_email: sessionUserEmail,
           cursor_x: cursorData.x,
           cursor_y: cursorData.y,
           cursor_z: cursorData.z,
@@ -388,11 +394,17 @@ async function cleanupOldSessions() {
 
 async function removeUserSession(userId, canvasId) {
   try {
-    await supabase
+    const { error } = await supabase
       .from('user_sessions')
       .delete()
       .eq('user_id', userId)
       .eq('canvas_id', canvasId)
+
+    if (error) {
+      console.error('Error removing user session:', error)
+    } else {
+      console.log(`🗑️ Removed session for user ${userId} on canvas ${canvasId}`)
+    }
   } catch (error) {
     console.error('Error removing user session:', error)
   }

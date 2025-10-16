@@ -5,8 +5,8 @@ import * as THREE from 'three';
  * Manages shape metadata and serialization
  */
 export class Shape {
-  constructor(type, mesh, properties = {}) {
-    this.id = crypto.randomUUID();
+  constructor(type, mesh, properties = {}, id = null) {
+    this.id = id || crypto.randomUUID();
     this.type = type;
     this.mesh = mesh;
     this.properties = properties;

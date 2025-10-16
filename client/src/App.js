@@ -184,19 +184,25 @@ export class App {
       const canvasIdFromUrl = urlParams.get('canvas');
 
       console.log('🎯 URL params:', { canvasIdFromUrl });
+      console.log('🎯 URL path:', window.location.pathname);
 
       if (canvasIdFromUrl) {
         // Join the canvas from URL (assume it's already a valid UUID)
         this.currentCanvasId = canvasIdFromUrl;
         console.log(`🔄 Joining canvas from URL: ${canvasIdFromUrl}`);
+      } else if (window.location.pathname === '/default') {
+        // Use the default canvas UUID for /default route
+        // This is a persistent canvas that users can share and return to
+        this.currentCanvasId = '550e8400-e29b-41d4-a716-446655440000';
+        console.log(`🔄 Using default canvas: ${this.currentCanvasId}`);
       } else if (!this.currentCanvasId) {
-        // Only create/find canvas if we don't already have one
-        console.log('🎯 Creating/finding shared canvas (no existing canvas ID)');
+        // For base URL or any other path, always create a new canvas
+        console.log('🎯 Creating new canvas for base URL');
         try {
-          this.currentCanvasId = await this.getOrCreateSharedCanvas();
-          console.log(`🎯 Got canvas ID: ${this.currentCanvasId}`);
+          this.currentCanvasId = await this.createNewCanvas();
+          console.log(`🎯 Created new canvas ID: ${this.currentCanvasId}`);
         } catch (error) {
-          console.error('🎯 Failed to get/create canvas, using fallback:', error);
+          console.error('🎯 Failed to create new canvas, using fallback:', error);
           this.currentCanvasId = '550e8400-e29b-41d4-a716-446655440000';
         }
       } else {
@@ -204,6 +210,10 @@ export class App {
       }
 
       console.log('🎯 Final canvas ID before join:', this.currentCanvasId);
+
+      // Update URL to reflect the current canvas (for sharing and refreshing)
+      this.updateCanvasUrl();
+
       socketManager.joinCanvas(this.currentCanvasId);
       this.updateCanvasInfo();
 
@@ -217,9 +227,9 @@ export class App {
     }
   }
 
-  async getOrCreateSharedCanvas() {
+  async createNewCanvas() {
     try {
-      console.log('🔄 getOrCreateSharedCanvas called, auth.userId:', auth.userId);
+      console.log('🔄 createNewCanvas called, auth.userId:', auth.userId);
       console.log('🔄 Supabase available:', !!supabase);
 
       // First check if Supabase is properly configured
@@ -227,32 +237,17 @@ export class App {
         throw new Error('Supabase client not initialized');
       }
 
-      // Try to find an existing shared canvas
-      console.log('🔄 Querying for existing canvas...');
-      const { data: existingCanvases, error: findError } = await supabase
-        .from('canvases')
-        .select('id, name')
-        .eq('name', 'Shared Default Canvas')
-        .limit(1);
+      // Generate a unique name for the canvas
+      const timestamp = Date.now();
+      const randomSuffix = Math.random().toString(36).substring(2, 8);
+      const canvasName = `Canvas ${timestamp}-${randomSuffix}`;
 
-      console.log('🔄 Database query result:', { existingCanvases, findError });
-
-      if (findError) {
-        console.error('🔄 Database query failed:', findError);
-        throw findError;
-      }
-
-      if (existingCanvases && existingCanvases.length > 0) {
-        console.log('🔄 Found existing shared canvas:', existingCanvases[0]);
-        return existingCanvases[0].id;
-      }
-
-      // Create a new shared canvas if none exists
-      console.log('🔄 Creating new shared canvas...');
+      // Create a new canvas
+      console.log('🔄 Creating new canvas:', canvasName);
       const { data: newCanvas, error } = await supabase
         .from('canvases')
         .insert({
-          name: 'Shared Default Canvas',
+          name: canvasName,
           created_by: auth.userId
         })
         .select('id, name')
@@ -262,10 +257,10 @@ export class App {
 
       if (error) throw error;
 
-      console.log('🔄 Created new shared canvas:', newCanvas);
+      console.log('🔄 Created new canvas:', newCanvas);
       return newCanvas.id;
     } catch (error) {
-      console.error('Error getting/creating shared canvas:', error);
+      console.error('Error creating new canvas:', error);
       // Fallback to a hardcoded UUID if database operations fail
       console.log('🔄 Using fallback UUID due to error:', error.message);
       return '550e8400-e29b-41d4-a716-446655440000';
@@ -359,14 +354,26 @@ export class App {
     }
   }
 
-  shareCanvas() {
+  updateCanvasUrl() {
     if (!this.currentCanvasId) return;
 
     const currentUrl = new URL(window.location.href);
     currentUrl.searchParams.set('canvas', this.currentCanvasId);
 
-    // Update the current URL in the browser (optional, for consistency)
+    // Update the current URL in the browser (for sharing and refreshing)
     window.history.replaceState({}, '', currentUrl.toString());
+
+    console.log('🔗 Updated URL to:', currentUrl.toString());
+  }
+
+  shareCanvas() {
+    if (!this.currentCanvasId) return;
+
+    // Update URL to include canvas ID
+    this.updateCanvasUrl();
+
+    // Get the updated URL
+    const currentUrl = new URL(window.location.href);
 
     // Copy to clipboard
     if (navigator.clipboard) {
@@ -572,46 +579,84 @@ export class App {
         this.onlineUsers.add(session.user_id); // Add all users to online users set (including ourselves)
 
         // Create cursor for all users (including current user for consistency)
+        // Note: handleExistingSession will skip current user if cursor already exists
         this.handleExistingSession(session);
       });
 
       // Update presence display after loading existing sessions
       this.updatePresenceDisplay();
       console.log('🔄 Updated presence display, total users:', this.onlineUsers.size);
+
+      // Force initial cursor position update for current user after a short delay
+      // This ensures the cursor is positioned correctly even if mouse hasn't moved yet
+      setTimeout(() => {
+        if (auth.userId && this.cursorManager && this.cursorManager.getCursor(auth.userId)) {
+          console.log('🎯 Forcing initial cursor position update for current user');
+          this.updateCursorPosition();
+        }
+      }, 100);
     }
   }
 
   handleExistingSession(session) {
     console.log('🎯 Creating cursor for existing session:', session.user_id, 'at position:', session.cursor_x, session.cursor_y);
 
-    // Create cursor for existing user session
+    // Create cursor for existing user session (skip if already exists)
     if (this.cursorManager) {
-      const colorIndex = this.cursorManager.getUserColorIndex(session.user_id);
-      // For existing sessions, we don't have email info, so use user ID
-      const userName = `User ${session.user_id.substring(0, 8)}`;
-
-      this.cursorManager.addUserCursor(session.user_id, userName, colorIndex);
-
-      // Update cursor position if available
-      if (session.cursor_x !== undefined && session.cursor_y !== undefined) {
-        console.log('🎯 Positioning cursor for', session.user_id, 'at', session.cursor_x, session.cursor_y);
-        this.cursorManager.updateCursorPosition(session.user_id, {
-          x: session.cursor_x,
-          y: session.cursor_y,
-          z: session.cursor_z || 0
-        }, Date.now());
+      // Check if cursor already exists to prevent duplicates
+      if (this.cursorManager.getCursor(session.user_id)) {
+        console.log('🎯 Cursor already exists for', session.user_id, '- updating position if needed');
       } else {
-        console.log('🎯 No position data for', session.user_id, '- will use current mouse position');
-        // For users without position data, position them at current mouse position
-        if (this.cursorManager) {
-          const worldPosition = this.cursorManager.get3DPositionFromMouse()
-          console.log('🎯 Positioning cursor at current mouse position:', worldPosition.x, worldPosition.y, worldPosition.z);
+        const colorIndex = this.cursorManager.getUserColorIndex(session.user_id);
+
+        // Use email from session if available, otherwise fall back to user ID
+        let userName;
+        if (session.user_email) {
+          userName = session.user_id === auth.userId ? 'You' : session.user_email.split('@')[0];
+        } else {
+          userName = session.user_id === auth.userId ? 'You' : `User ${session.user_id.substring(0, 8)}`;
+        }
+
+        this.cursorManager.addUserCursor(session.user_id, userName, colorIndex);
+        console.log('🎯 Created new cursor for', session.user_id);
+      }
+
+      // Update cursor position if available and not at default (0,0,0) for current user
+      if (session.cursor_x !== undefined && session.cursor_y !== undefined) {
+        // For current user, don't position at (0,0,0) - let normal cursor updates handle it
+        if (session.user_id === auth.userId && session.cursor_x === 0 && session.cursor_y === 0 && (session.cursor_z === 0 || session.cursor_z === undefined)) {
+          console.log('🎯 Current user cursor at default position - will be updated by mouse movement');
+        } else {
+          console.log('🎯 Positioning cursor for', session.user_id, 'at', session.cursor_x, session.cursor_y);
           this.cursorManager.updateCursorPosition(session.user_id, {
-            x: worldPosition.x,
-            y: worldPosition.y,
-            z: worldPosition.z
+            x: session.cursor_x,
+            y: session.cursor_y,
+            z: session.cursor_z || 0
           }, Date.now());
         }
+      } else {
+        // If cursor exists but no position data, position at appropriate default
+        if (this.cursorManager.getCursor(session.user_id)) {
+          console.log('🎯 No position data for existing cursor', session.user_id, '- using default position');
+          if (session.user_id === auth.userId) {
+            console.log('🎯 Current user cursor will be positioned by normal update logic');
+          } else {
+            console.log('🎯 Positioning other user cursor at scene center');
+            this.cursorManager.updateCursorPosition(session.user_id, {
+              x: 0,
+              y: 0,
+              z: 0
+            }, Date.now());
+          }
+        }
+      }
+
+      // If this is the current user and cursor exists, trigger initial position update
+      if (session.user_id === auth.userId && this.cursorManager.getCursor(session.user_id)) {
+        console.log('🎯 Triggering initial cursor position update for current user');
+        setTimeout(() => {
+          this.updateCursorPosition();
+        }, 50);
       }
     }
   }
@@ -619,34 +664,38 @@ export class App {
   handleUserJoined(data) {
     console.log('🔵 User joined event received:', data.userId);
 
+    // Skip if this is the current user (they should already have a cursor from canvas state)
+    if (data.userId === auth.userId) {
+      console.log('🔵 Skipping user joined for current user (cursor should exist from canvas state)');
+      return;
+    }
+
     // Add user to online users set
     this.onlineUsers.add(data.userId);
 
     // Update presence display
     this.updatePresenceDisplay();
 
-    // Show join notification only for other users (not current user)
-    if (data.userId !== auth.userId) {
-      const displayName = data.userEmail || `User ${data.userId.substring(0, 8)}`;
-      this.showNotification(`${displayName} joined`, 'join');
-    }
+    // Show join notification for other users
+    const displayName = data.userEmail ? data.userEmail.split('@')[0] : `User ${data.userId.substring(0, 8)}`;
+    this.showNotification(`${displayName} joined`, 'join');
 
-    // Update cursor label for all users (including current user)
+    // Update cursor label if cursor exists, or create cursor if it doesn't
     if (this.cursorManager && this.cursorManager.getCursor(data.userId)) {
-      console.log('🔵 Updating cursor label for user:', data.userId);
-      const userName = data.userEmail || `User ${data.userId.substring(0, 8)}`;
+      console.log('🔵 Updating cursor label for existing user:', data.userId);
+      const userName = data.userEmail ? data.userEmail.split('@')[0] : `User ${data.userId.substring(0, 8)}`;
       // Update the existing cursor's label
       const cursor = this.cursorManager.getCursor(data.userId);
       if (cursor) {
         cursor.userName = userName;
         // Update the label mesh text
-        this.updateCursorLabel(cursor);
+        this.cursorManager.updateCursorLabel(cursor);
       }
     } else {
-      // Create cursor if it doesn't exist
-      console.log('🔵 Creating cursor for joined user:', data.userId);
+      // Create cursor if it doesn't exist (shouldn't happen for existing canvas users)
+      console.log('🔵 Creating cursor for joined user (unexpected):', data.userId);
       const colorIndex = this.cursorManager.getUserColorIndex(data.userId)
-      const userName = data.userEmail || `User ${data.userId.substring(0, 8)}`
+      const userName = data.userEmail ? data.userEmail.split('@')[0] : `User ${data.userId.substring(0, 8)}`
 
       this.cursorManager.addUserCursor(data.userId, userName, colorIndex)
     }
@@ -681,6 +730,14 @@ export class App {
 
   handleObjectCreated(data) {
     console.log('🔵 Remote object created:', data);
+
+    // Check if object already exists (prevent duplicates from local creation echo)
+    if (this.shapeManager && this.shapeManager.getShape(data.id)) {
+      console.log('🔵 Object already exists, skipping creation:', data.id);
+      // Just update tracking
+      this.remoteObjects.set(data.id, data);
+      return;
+    }
 
     // Create visual object in 3D scene
     if (this.shapeManager) {
@@ -729,9 +786,9 @@ export class App {
   }
 
   handleObjectTransform(object) {
-    // Throttle object updates to reduce lag
+    // Throttle object updates for smooth dragging (60fps)
     const now = Date.now();
-    if (now - this.lastObjectUpdate < 100) { // Throttle to 10fps
+    if (now - this.lastObjectUpdate < 16) { // Throttle to 60fps for smooth dragging
       return;
     }
     this.lastObjectUpdate = now;
