@@ -41,10 +41,11 @@ export class App {
   }
 
   async init() {
-    console.log('Initializing CollabCanvas...');
+    try {
+      console.log('Initializing CollabCanvas...');
 
-    // Initialize authentication first
-    await this.initAuth();
+      // Initialize authentication first
+      await this.initAuth();
 
     // Get canvas element
     const canvas = document.getElementById('canvas');
@@ -62,8 +63,9 @@ export class App {
     this.grid = new Grid(this.scene.getScene());
     this.raycaster = new Raycaster(this.scene.getCamera(), canvas);
     this.shapeManager = new ShapeManager(this.scene.getScene());
-    // Import SnapManager
+    // Import SnapManager and ObjectControls
     const { SnapManager } = await import('./core/SnapManager.js');
+    const { ObjectControls } = await import('./core/ObjectControls.js');
     this.snapManager = new SnapManager(this.shapeManager);
     this.transform = new Transform(
       this.scene.getCamera(),
@@ -71,6 +73,7 @@ export class App {
       this.controls.controls, // Pass the actual OrbitControls instance
       this.snapManager
     );
+    this.objectControls = new ObjectControls(this.scene.getCamera(), this.transform);
     this.cursorManager = new CursorManager(this.scene, this.scene.getCamera());
 
     // Set up transform controls callback for object updates
@@ -106,10 +109,25 @@ export class App {
       console.log('Waiting for authentication before creating canvas...');
     }
 
-    console.log('CollabCanvas initialized successfully');
+      console.log('CollabCanvas initialized successfully');
 
-    // Hide loading screen
-    this.hideLoading();
+      // Hide loading screen
+      this.hideLoading();
+    } catch (error) {
+      console.error('❌ Failed to initialize CollabCanvas:', error);
+
+      // Show error message to user
+      const loadingScreen = document.getElementById('loading');
+      if (loadingScreen) {
+        loadingScreen.innerHTML = `
+          <div style="color: #ff6b6b; text-align: center;">
+            <h2>Failed to load CollabCanvas</h2>
+            <p>${error.message}</p>
+            <button onclick="location.reload()">Retry</button>
+          </div>
+        `;
+      }
+    }
   }
 
   async initAuth() {
@@ -526,6 +544,11 @@ export class App {
       this.cursorManager.update()
     }
 
+    // Update object controls position if visible
+    if (this.objectControls && this.transform && this.transform.isAttached()) {
+      this.objectControls.update(this.transform.attachedObject);
+    }
+
     // Update cursor position for remote users (throttled)
     if (socketManager.isConnected && this.currentCanvasId) {
       const now = Date.now()
@@ -666,7 +689,13 @@ export class App {
   }
 
   handleUserJoined(data) {
-    console.log('🔵 User joined event received:', data.userId);
+    console.log('🔵 User joined event received:', data);
+
+    // Check if data exists and has required properties
+    if (!data || !data.userId) {
+      console.error('🔴 Invalid user joined data:', data);
+      return;
+    }
 
     // Skip if this is the current user (they should already have a cursor from canvas state)
     if (data.userId === auth.userId) {
@@ -706,7 +735,13 @@ export class App {
   }
 
   handleUserLeft(data) {
-    console.log('🔴 User left event received:', data.userId);
+    console.log('🔴 User left event received:', data);
+
+    // Check if data exists and has required properties
+    if (!data || !data.userId) {
+      console.error('🔴 Invalid user left data:', data);
+      return;
+    }
 
     // Remove user from online users set
     this.onlineUsers.delete(data.userId);
@@ -726,6 +761,12 @@ export class App {
   }
 
   handleCursorUpdate(data) {
+    // Check if data exists and has required properties
+    if (!data || !data.userId) {
+      console.error('🔴 Invalid cursor update data:', data);
+      return;
+    }
+
     // Update remote cursor position visually
     if (this.cursorManager) {
       this.cursorManager.updateCursorPosition(data.userId, data, Date.now())
@@ -734,6 +775,12 @@ export class App {
 
   handleObjectCreated(data) {
     console.log('🔵 Remote object created:', data);
+
+    // Check if data exists and has required properties
+    if (!data || !data.id) {
+      console.error('🔴 Invalid object created data:', data);
+      return;
+    }
 
     // Check if object already exists (prevent duplicates from local creation echo)
     if (this.shapeManager && this.shapeManager.getShape(data.id)) {
@@ -956,12 +1003,23 @@ export class App {
 
         // Attach transform controls to the selected shape (last selected)
         this.transform.attach(shape.mesh);
+
+        // Show object controls above the selected object
+        if (this.objectControls) {
+          this.objectControls.show(shape.mesh);
+          this.objectControls.updateButtonStates(this.transform.getMode());
+        }
       }
     } else {
       // Clicked on empty space - clear selection
       if (!event.shiftKey) {
         this.shapeManager.clearSelection();
         this.transform.detach();
+
+        // Hide object controls
+        if (this.objectControls) {
+          this.objectControls.hide();
+        }
       }
     }
   }
@@ -1050,6 +1108,24 @@ export class App {
       case 'o':
         this.handleToolClick('circle');
         break;
+      case 'q':
+        // Set translate mode
+        if (this.objectControls) {
+          this.objectControls.setMode('translate');
+        }
+        break;
+      case 'w':
+        // Set rotate mode
+        if (this.objectControls) {
+          this.objectControls.setMode('rotate');
+        }
+        break;
+      case 'e':
+        // Set scale mode
+        if (this.objectControls) {
+          this.objectControls.setMode('scale');
+        }
+        break;
       case 'g':
         if (e.shiftKey) {
           // Toggle snap with Shift+G
@@ -1067,12 +1143,18 @@ export class App {
         if (this.transform) {
           this.transform.detach();
         }
+        if (this.objectControls) {
+          this.objectControls.hide();
+        }
         break;
       case 'delete':
       case 'backspace':
         // Delete selected shapes
         if (this.shapeManager) {
           this.transform.detach();
+          if (this.objectControls) {
+            this.objectControls.hide();
+          }
           const deletedIds = this.shapeManager.deleteSelected();
 
           // Broadcast deletion to other users
