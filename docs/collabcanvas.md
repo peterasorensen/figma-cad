@@ -75,9 +75,51 @@ We’ll test with:
 * Sync object changes across users in \<100ms and cursor positions in \<50ms.  
 * Support 500+ simple objects without FPS drops and 5+ concurrent users without degradation.
 
+## AI Canvas Agent
+
 ### The AI Feature
 
-Just to keep in mind for the future. Make sure to define a tool schema that a future AI agent can call, such as:
+Build an AI agent that manipulates your canvas through natural language using function calling.
+
+When a user types “Create a blue rectangle in the center,” the AI agent calls your canvas API functions, and the rectangle appears on everyone’s canvas via real-time sync.
+
+### Required Capabilities
+
+Your AI agent must support at least 6 distinct commands showing a range of creation, manipulation, and layout actions.
+
+#### Creation Commands:
+
+* “Create a red circle at position 100, 200”  
+* “Add a text layer that says ‘Hello World’”  
+* “Make a 200x300 rectangle”
+
+#### Manipulation Commands:
+
+* “Move the blue rectangle to the center”  
+* “Resize the circle to be twice as big”  
+* “Rotate the text 45 degrees”
+
+#### Layout Commands:
+
+* “Arrange these shapes in a horizontal row”  
+* “Create a grid of 3x3 squares”  
+* “Space these elements evenly”
+
+#### Complex Commands:
+
+* “Create a login form with username and password fields”  
+* “Build a navigation bar with 4 menu items”  
+* “Make a card layout with title, image, and description”
+
+#### Example Evaluation Criteria
+
+When you say:
+
+“Create a login form,” …We expect the AI to create at least three inputs (username, password, submit), arranged neatly, not just a text box.
+
+### Technical Implementation
+
+Define a tool schema that your AI can call, such as:
 
 ```ts
 createShape(type, x, y, width, height, color)
@@ -87,6 +129,21 @@ rotateShape(shapeId, degrees)
 createText(text, x, y, fontSize, color)
 getCanvasState() // returns current canvas objects for context
 ```
+
+We recommend OpenAI’s function calling or LangChain tools for interpretation.  
+For complex operations (e.g. “create a login form”), your AI should plan steps upfront (create fields, align, group) and execute sequentially.
+
+#### Shared AI State
+
+All users must see the same AI-generated results. If one user asks the AI to create something, everyone should see it. Multiple users should be able to use the AI simultaneously without conflict.
+
+#### AI Agent Performance Targets
+
+* Latency: Responses under 2 seconds for single-step commands.  
+* Breadth: Handles 6+ command types.  
+* Complexity: Executes multi-step operations.  
+* Reliability: Consistent and accurate execution.  
+* UX: Natural interaction with visible, immediate feedback.
 
 #### Technical Stack
 

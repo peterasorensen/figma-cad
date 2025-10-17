@@ -81,8 +81,8 @@
      resolution (or last-write-wins with timestamps)
      35. Add optimistic updates - Apply local changes immediately, reconcile
       on conflict
-     36. Optimize network traffic - Throttle cursor updates (50ms), batch 
-     object updates (100ms)
+     36. Optimize updates - Cursor updates (20ms or less), batch 
+     object updates
      37. Test: Rapid simultaneous edits from multiple users
 
      Phase 10: Layer Management & Advanced Features (Steps 38-41)

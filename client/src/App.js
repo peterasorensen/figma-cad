@@ -61,12 +61,16 @@ export class App {
     );
     this.grid = new Grid(this.scene.getScene());
     this.raycaster = new Raycaster(this.scene.getCamera(), canvas);
+    this.shapeManager = new ShapeManager(this.scene.getScene());
+    // Import SnapManager
+    const { SnapManager } = await import('./core/SnapManager.js');
+    this.snapManager = new SnapManager(this.shapeManager);
     this.transform = new Transform(
       this.scene.getCamera(),
       this.scene.getRenderer().domElement,
-      this.controls.controls // Pass the actual OrbitControls instance
+      this.controls.controls, // Pass the actual OrbitControls instance
+      this.snapManager
     );
-    this.shapeManager = new ShapeManager(this.scene.getScene());
     this.cursorManager = new CursorManager(this.scene, this.scene.getCamera());
 
     // Set up transform controls callback for object updates
@@ -854,6 +858,14 @@ export class App {
       });
     }
 
+    // Snap toggle button
+    const snapToggle = document.getElementById('snap-toggle');
+    if (snapToggle) {
+      snapToggle.addEventListener('click', () => {
+        this.toggleSnap();
+      });
+    }
+
     // Authentication button
     const authButton = document.getElementById('auth-button');
     if (authButton) {
@@ -887,6 +899,17 @@ export class App {
       const gridToggle = document.getElementById('grid-toggle');
       if (gridToggle) {
         gridToggle.classList.toggle('active');
+      }
+    }
+  }
+
+  toggleSnap() {
+    if (this.snapManager) {
+      const newState = !this.snapManager.isEnabled();
+      this.snapManager.setEnabled(newState);
+      const snapToggle = document.getElementById('snap-toggle');
+      if (snapToggle) {
+        snapToggle.classList.toggle('active', newState);
       }
     }
   }
@@ -1028,8 +1051,13 @@ export class App {
         this.handleToolClick('circle');
         break;
       case 'g':
-        // Toggle grid
-        this.toggleGrid();
+        if (e.shiftKey) {
+          // Toggle snap with Shift+G
+          this.toggleSnap();
+        } else {
+          // Toggle grid with G
+          this.toggleGrid();
+        }
         break;
       case 'escape':
         // Deselect all

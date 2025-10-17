@@ -309,12 +309,21 @@
       </div>
 
       <div id="view-controls">
-        <button class="view-button tooltip active" id="grid-toggle" data-tooltip="Toggle Grid (G)">
+        <button class="view-button tooltip" id="grid-toggle" data-tooltip="Toggle Grid (G)">
           <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
             <rect x="1" y="1" width="8" height="8" fill="none" stroke="currentColor" stroke-width="1.5"/>
             <rect x="11" y="1" width="8" height="8" fill="none" stroke="currentColor" stroke-width="1.5"/>
             <rect x="1" y="11" width="8" height="8" fill="none" stroke="currentColor" stroke-width="1.5"/>
             <rect x="11" y="11" width="8" height="8" fill="none" stroke="currentColor" stroke-width="1.5"/>
+          </svg>
+        </button>
+        <button class="view-button tooltip" id="snap-toggle" data-tooltip="Toggle Snap (Shift+G)">
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
+            <path d="M3 3h14v2H3V3zm0 4h14v2H3V7zm0 4h14v2H3v-2zm0 4h14v2H3v-2z"/>
+            <circle cx="8" cy="4" r="1.5" fill="currentColor"/>
+            <circle cx="12" cy="8" r="1.5" fill="currentColor"/>
+            <circle cx="8" cy="12" r="1.5" fill="currentColor"/>
+            <circle cx="12" cy="16" r="1.5" fill="currentColor"/>
           </svg>
         </button>
       </div>
