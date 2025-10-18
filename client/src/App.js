@@ -36,6 +36,7 @@ export class App {
     this.wasAuthenticated = false; // Track previous auth state
     this.onlineUsers = new Set(); // Track online users for presence display
     this.notifications = []; // Track active notifications
+    this.initialStateCaptured = false; // Flag to ensure initial state is only captured once
 
     this.init();
   }
@@ -112,8 +113,8 @@ export class App {
       this.createOrJoinDefaultCanvas();
     }
 
-    // Initialize undo button state
-    this.updateUndoButtonState();
+    // Initialize undo/redo button states (both disabled initially)
+    this.updateUndoRedoButtonStates();
 
     console.log('CollabCanvas initialized successfully');
 
@@ -237,9 +238,12 @@ export class App {
         console.log('🎯 Using existing canvas ID:', this.currentCanvasId);
       }
 
-      console.log('🎯 Final canvas ID before join:', this.currentCanvasId);
+        console.log('🎯 Final canvas ID before join:', this.currentCanvasId);
 
-      // Update URL to reflect the current canvas (for sharing and refreshing)
+        // Reset initial state flag when joining a new canvas
+        this.initialStateCaptured = false;
+
+        // Update URL to reflect the current canvas (for sharing and refreshing)
       this.updateCanvasUrl();
 
       socketManager.joinCanvas(this.currentCanvasId);
@@ -600,6 +604,14 @@ export class App {
     // Load objects and user sessions (existing sessions, not new joins)
     if (data.objects) {
       data.objects.forEach(obj => this.handleObjectCreated(obj));
+
+      // Capture initial state after loading objects from server (only once per canvas)
+      if (this.historyManager && !this.initialStateCaptured) {
+        const selectedShapeIds = Array.from(this.shapeManager.selectedShapes);
+        this.historyManager.captureState(this.shapeManager, selectedShapeIds);
+        this.updateUndoRedoButtonStates();
+        this.initialStateCaptured = true;
+      }
     }
 
     // Handle existing user sessions (don't treat as new joins)
@@ -877,12 +889,12 @@ export class App {
   }
 
   handleDragEnd(object) {
-    // Capture state when drag ends (for undo functionality)
-    if (this.historyManager) {
-      const selectedShapeIds = Array.from(this.shapeManager.selectedShapes);
-      this.historyManager.captureState(this.shapeManager, selectedShapeIds);
-      this.updateUndoButtonState();
-    }
+        // Capture state when drag ends (for undo functionality)
+        if (this.historyManager) {
+          const selectedShapeIds = Array.from(this.shapeManager.selectedShapes);
+          this.historyManager.captureState(this.shapeManager, selectedShapeIds);
+          this.updateUndoRedoButtonStates();
+        }
   }
 
   setupEventListeners() {
@@ -933,6 +945,14 @@ export class App {
     if (undoButton) {
       undoButton.addEventListener('click', () => {
         this.undo();
+      });
+    }
+
+    // Redo button
+    const redoButton = document.getElementById('redo-button');
+    if (redoButton) {
+      redoButton.addEventListener('click', () => {
+        this.redo();
       });
     }
 
@@ -1001,7 +1021,7 @@ export class App {
       }
 
       // Update UI after undo
-      this.updateUndoButtonState();
+      this.updateUndoRedoButtonStates();
 
       // Reattach transform controls to selected object if any
       const selectedShapes = Array.from(this.shapeManager.selectedShapes);
@@ -1027,11 +1047,55 @@ export class App {
     }
   }
 
-  updateUndoButtonState() {
+  redo() {
+    if (this.historyManager && this.historyManager.redo(this.shapeManager)) {
+      // Detach transform controls during restoration
+      this.transform.detach();
+
+      // Hide object controls during restoration
+      if (this.objectControls) {
+        this.objectControls.hide();
+      }
+
+      // Update UI after redo
+      this.updateUndoRedoButtonStates();
+
+      // Reattach transform controls to selected object if any
+      const selectedShapes = Array.from(this.shapeManager.selectedShapes);
+      if (selectedShapes.length > 0) {
+        const shapeId = selectedShapes[selectedShapes.length - 1]; // Get last selected
+        const shape = this.shapeManager.shapes.get(shapeId);
+        if (shape) {
+          // Ensure the shape's mesh is properly in the scene
+          if (!shape.mesh.parent) {
+            this.shapeManager.scene.add(shape.mesh);
+          }
+
+          // Attach transform controls
+          this.transform.attach(shape.mesh);
+
+          // Show object controls
+          if (this.objectControls) {
+            this.objectControls.show(shape.mesh);
+            this.objectControls.updateButtonStates(this.transform.getMode());
+          }
+        }
+      }
+    }
+  }
+
+  updateUndoRedoButtonStates() {
     const undoButton = document.getElementById('undo-button');
+    const redoButton = document.getElementById('redo-button');
+
     if (undoButton && this.historyManager) {
       const canUndo = this.historyManager.canUndo();
       undoButton.disabled = !canUndo;
+    }
+
+    if (redoButton && this.historyManager) {
+      const canRedo = this.historyManager.canRedo();
+      redoButton.disabled = !canRedo;
     }
   }
 
@@ -1153,7 +1217,7 @@ export class App {
         if (this.historyManager) {
           const selectedShapeIds = Array.from(this.shapeManager.selectedShapes);
           this.historyManager.captureState(this.shapeManager, selectedShapeIds);
-          this.updateUndoButtonState();
+          this.updateUndoRedoButtonStates();
         }
 
         // Broadcast object creation to other users
@@ -1245,7 +1309,11 @@ export class App {
         }
         break;
       case 'z':
-        if (e.ctrlKey || e.metaKey) {
+        if ((e.ctrlKey || e.metaKey) && e.shiftKey) {
+          // Ctrl+Shift+Z / Cmd+Shift+Z for redo
+          e.preventDefault();
+          this.redo();
+        } else if (e.ctrlKey || e.metaKey) {
           // Ctrl+Z / Cmd+Z for undo
           e.preventDefault();
           this.undo();
@@ -1271,7 +1339,7 @@ export class App {
           if (this.historyManager) {
             const selectedShapeIds = Array.from(this.shapeManager.selectedShapes);
             this.historyManager.captureState(this.shapeManager, selectedShapeIds);
-            this.updateUndoButtonState();
+            this.updateUndoRedoButtonStates();
           }
 
           this.transform.detach();
