@@ -933,6 +933,12 @@ export class App {
       });
     }
 
+    // Object control actions
+    document.addEventListener('objectControlAction', (e) => {
+      const { action } = e.detail;
+      this.handleObjectControlAction(action);
+    });
+
     // Update canvas info display
     this.updateCanvasInfo();
 
@@ -958,6 +964,28 @@ export class App {
       if (snapToggle) {
         snapToggle.classList.toggle('active', newState);
       }
+    }
+  }
+
+  handleObjectControlAction(action) {
+    switch (action) {
+      case 'duplicate':
+        // Duplicate selected shapes (same as Ctrl+D)
+        if (this.shapeManager) {
+          const duplicatedShapes = this.shapeManager.duplicateSelected();
+          if (duplicatedShapes.length > 0) {
+            // Attach transform controls to the last duplicated shape
+            const lastShape = duplicatedShapes[duplicatedShapes.length - 1];
+            this.transform.attach(lastShape.mesh);
+
+            // Show object controls above the selected object
+            if (this.objectControls) {
+              this.objectControls.show(lastShape.mesh);
+              this.objectControls.updateButtonStates(this.transform.getMode());
+            }
+          }
+        }
+        break;
     }
   }
 
@@ -1046,6 +1074,12 @@ export class App {
         this.shapeManager.clearSelection();
         this.shapeManager.selectShape(shape.id);
         this.transform.attach(shape.mesh);
+
+        // Show object controls above the selected object
+        if (this.objectControls) {
+          this.objectControls.show(shape.mesh);
+          this.objectControls.updateButtonStates(this.transform.getMode());
+        }
 
         // Broadcast object creation to other users
         if (socketManager.isConnected && this.currentCanvasId) {
@@ -1170,7 +1204,18 @@ export class App {
       case 'd':
         // Duplicate selected shapes (Ctrl/Cmd + D)
         if ((e.ctrlKey || e.metaKey) && this.shapeManager) {
-          this.shapeManager.duplicateSelected();
+          const duplicatedShapes = this.shapeManager.duplicateSelected();
+          if (duplicatedShapes.length > 0) {
+            // Attach transform controls to the last duplicated shape
+            const lastShape = duplicatedShapes[duplicatedShapes.length - 1];
+            this.transform.attach(lastShape.mesh);
+
+            // Show object controls above the selected object
+            if (this.objectControls) {
+              this.objectControls.show(lastShape.mesh);
+              this.objectControls.updateButtonStates(this.transform.getMode());
+            }
+          }
           e.preventDefault();
         }
         break;

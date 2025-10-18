@@ -31,12 +31,23 @@ export class ObjectControls {
 
   setupButtons() {
     const modes = ['translate', 'rotate', 'scale'];
+    const actions = ['duplicate'];
 
+    // Set up mode buttons
     modes.forEach(mode => {
       const button = this.container.querySelector(`[data-mode="${mode}"]`);
       if (button) {
         this.buttons.set(mode, button);
         button.addEventListener('click', () => this.setMode(mode));
+      }
+    });
+
+    // Set up action buttons
+    actions.forEach(action => {
+      const button = this.container.querySelector(`[data-action="${action}"]`);
+      if (button) {
+        this.buttons.set(action, button);
+        button.addEventListener('click', () => this.executeAction(action));
       }
     });
   }
@@ -83,6 +94,17 @@ export class ObjectControls {
     this.buttons.forEach((button, mode) => {
       button.classList.toggle('active', mode === activeMode);
     });
+  }
+
+  /**
+   * Execute an action (like duplicate)
+   */
+  executeAction(action) {
+    // Dispatch a custom event that the App can listen to
+    const event = new CustomEvent('objectControlAction', {
+      detail: { action }
+    });
+    document.dispatchEvent(event);
   }
 
   /**
