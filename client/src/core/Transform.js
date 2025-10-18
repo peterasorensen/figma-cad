@@ -122,32 +122,95 @@ export class Transform {
       return;
     }
 
-    // Only snap during translation, not rotation or scaling
-    if (this.currentMode !== 'translate') {
-      return;
+    const shapeId = this.attachedObject.userData.shapeId;
+    let needsUpdate = false;
+
+    switch (this.currentMode) {
+      case 'translate':
+        const currentPosition = {
+          x: this.attachedObject.position.x,
+          y: this.attachedObject.position.y,
+          z: this.attachedObject.position.z
+        };
+
+        // Apply snapping
+        const snappedPosition = this.snapManager.snapPosition(currentPosition, shapeId);
+
+        // Only update if the position actually changed (to avoid infinite loops)
+        if (!this.snapManager.positionsEqual(currentPosition, snappedPosition)) {
+          // Update the mesh position directly
+          this.attachedObject.position.set(snappedPosition.x, snappedPosition.y, snappedPosition.z);
+
+          // Update the transform controls to reflect the snapped position
+          this.controls.object.position.copy(this.attachedObject.position);
+          needsUpdate = true;
+        }
+        break;
+
+      case 'rotate':
+        const currentRotation = {
+          x: this.attachedObject.rotation.x,
+          y: this.attachedObject.rotation.y,
+          z: this.attachedObject.rotation.z
+        };
+
+        // Apply snapping
+        const snappedRotation = this.snapManager.snapRotation(currentRotation);
+
+        // Only update if the rotation actually changed (to avoid infinite loops)
+        if (!this.rotationsEqual(currentRotation, snappedRotation)) {
+          // Update the mesh rotation directly
+          this.attachedObject.rotation.set(snappedRotation.x, snappedRotation.y, snappedRotation.z);
+
+          // Update the transform controls to reflect the snapped rotation
+          this.controls.object.rotation.copy(this.attachedObject.rotation);
+          needsUpdate = true;
+        }
+        break;
+
+      case 'scale':
+        const currentScale = {
+          x: this.attachedObject.scale.x,
+          y: this.attachedObject.scale.y,
+          z: this.attachedObject.scale.z
+        };
+
+        // Apply snapping
+        const snappedScale = this.snapManager.snapScale(currentScale);
+
+        // Only update if the scale actually changed (to avoid infinite loops)
+        if (!this.scalesEqual(currentScale, snappedScale)) {
+          // Update the mesh scale directly
+          this.attachedObject.scale.set(snappedScale.x, snappedScale.y, snappedScale.z);
+
+          // Update the transform controls to reflect the snapped scale
+          this.controls.object.scale.copy(this.attachedObject.scale);
+          needsUpdate = true;
+        }
+        break;
     }
 
-    const currentPosition = {
-      x: this.attachedObject.position.x,
-      y: this.attachedObject.position.y,
-      z: this.attachedObject.position.z
-    };
-
-    // Get the shape ID for exclusion from snapping
-    const shapeId = this.attachedObject.userData.shapeId;
-
-    // Apply snapping
-    const snappedPosition = this.snapManager.snapPosition(currentPosition, shapeId);
-
-    // Only update if the position actually changed (to avoid infinite loops)
-    if (!this.snapManager.positionsEqual(currentPosition, snappedPosition)) {
-      // Update the mesh position directly
-      this.attachedObject.position.set(snappedPosition.x, snappedPosition.y, snappedPosition.z);
-
-      // Update the transform controls to reflect the snapped position
-      this.controls.object.position.copy(this.attachedObject.position);
+    if (needsUpdate) {
       this.controls.update();
     }
+  }
+
+  /**
+   * Check if two rotations are approximately equal
+   */
+  rotationsEqual(rot1, rot2, tolerance = 0.01) {
+    return Math.abs(rot1.x - rot2.x) < tolerance &&
+           Math.abs(rot1.y - rot2.y) < tolerance &&
+           Math.abs(rot1.z - rot2.z) < tolerance;
+  }
+
+  /**
+   * Check if two scales are approximately equal
+   */
+  scalesEqual(scale1, scale2, tolerance = 0.01) {
+    return Math.abs(scale1.x - scale2.x) < tolerance &&
+           Math.abs(scale1.y - scale2.y) < tolerance &&
+           Math.abs(scale1.z - scale2.z) < tolerance;
   }
 
   /**

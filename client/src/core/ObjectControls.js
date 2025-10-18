@@ -107,7 +107,7 @@ export class ObjectControls {
     const y = (-screenPosition.y * 0.5 + 0.5) * canvasRect.height + canvasRect.top;
 
     // Position above the object (with some offset)
-    const offsetY = 60; // Distance above the object
+    const offsetY = 240; // Distance above the object
     this.container.style.left = `${x - rect.width / 2}px`;
     this.container.style.top = `${y - offsetY}px`;
   }

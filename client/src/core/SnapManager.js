@@ -204,6 +204,34 @@ export class SnapManager {
   }
 
   /**
+   * Snap rotation angles to grid increments
+   */
+  snapRotation(rotation) {
+    if (!this.enabled) return rotation;
+
+    const snapAngle = 15; // Snap to 15-degree increments
+    return {
+      x: Math.round(rotation.x / (Math.PI / 12)) * (Math.PI / 12), // 15 degrees in radians
+      y: Math.round(rotation.y / (Math.PI / 12)) * (Math.PI / 12),
+      z: Math.round(rotation.z / (Math.PI / 12)) * (Math.PI / 12)
+    };
+  }
+
+  /**
+   * Snap scale values to grid increments
+   */
+  snapScale(scale) {
+    if (!this.enabled) return scale;
+
+    const snapIncrement = 0.1; // Snap to 0.1 increments
+    return {
+      x: Math.round(scale.x / snapIncrement) * snapIncrement,
+      y: Math.round(scale.y / snapIncrement) * snapIncrement,
+      z: Math.round(scale.z / snapIncrement) * snapIncrement
+    };
+  }
+
+  /**
    * Get visual feedback for snapping (optional - for preview)
    */
   getSnapPreview(position, excludeShapeId = null) {
