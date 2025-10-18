@@ -29,9 +29,14 @@ export class Transform {
         // OrbitControls uses 'enabled' property, not enable()/disable() methods
         this.orbitControls.enabled = !event.value;
       }
+
+      // Handle drag end - capture history state when drag finishes
+      if (!event.value && this.attachedObject && this.onDragEnd) {
+        this.onDragEnd(this.attachedObject);
+      }
     });
 
-    // Listen for object changes
+    // Listen for object changes (during dragging)
     this.controls.addEventListener('objectChange', () => {
       this.handleObjectChange();
       if (this.onObjectChange) {
@@ -112,6 +117,13 @@ export class Transform {
    */
   setChangeCallback(callback) {
     this.onObjectChange = callback;
+  }
+
+  /**
+   * Set callback for drag end events
+   */
+  setDragEndCallback(callback) {
+    this.onDragEnd = callback;
   }
 
   /**

@@ -198,6 +198,44 @@
       background: #5a8fd6;
     }
 
+    /* Bottom controls */
+    #bottom-controls {
+      position: absolute;
+      bottom: 20px;
+      left: 20px;
+      display: flex;
+      gap: 8px;
+      z-index: 10;
+    }
+
+    .bottom-button {
+      background: rgba(42, 42, 42, 0.95);
+      border: 1px solid #3a3a3a;
+      border-radius: 6px;
+      padding: 8px 12px;
+      cursor: pointer;
+      color: #ffffff;
+      font-size: 12px;
+      transition: background 0.2s;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .bottom-button:hover {
+      background: #4a4a4a;
+    }
+
+    .bottom-button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .bottom-button svg {
+      width: 16px;
+      height: 16px;
+    }
+
     /* Status bar */
     #status-bar {
       background: #2a2a2a;
@@ -375,6 +413,15 @@
             <circle cx="8" cy="12" r="1.5" fill="currentColor"/>
             <circle cx="12" cy="16" r="1.5" fill="currentColor"/>
           </svg>
+        </button>
+      </div>
+
+      <div id="bottom-controls">
+        <button id="undo-button" class="bottom-button" disabled title="Undo (Cmd+Z)">
+          <svg viewBox="0 0 24 24" fill="currentColor">
+            <path d="M12.5 8c-2.65 0-5.05.99-6.9 2.6L3.71 8.71C3.08 8.08 2 8.52 2 9.41V15c0 .89.89 1.34 1.41.71l1.89-1.89c1.5-1.5 3.57-2.43 5.7-2.43 4.42 0 8 3.58 8 8s-3.58 8-8 8c-1.55 0-3-.45-4.24-1.21C6.22 25.49 7.07 24 8.5 24c.83 0 1.5-.67 1.5-1.5S9.33 21 8.5 21c-1.38 0-2.5.48-3.34 1.34C6.58 21.48 8.5 19.5 8.5 16c0-3.31-2.69-6-6-6s-6 2.69-6 6c0 1.66.67 3.16 1.76 4.24l-1.42 1.42C-3.08 21.08-2.64 20-1.41 20h5.59c.89 0 .71 1.08.29 1.41l-1.42 1.42C2.24 23.93 1.34 23.27 1.34 22.38V16.8c0-.89 1.08-.71 1.41.29l1.42 1.42C5.05 17.01 7.45 16 10.1 16c2.65 0 5.05.99 6.9 2.6l1.89-1.89c.63-.63-.52-1.71-1.41-.71l-1.89 1.89C14.05 19.49 12.65 20 11.1 20c-4.42 0-8-3.58-8-8s3.58-8 8-8c-1.55 0-3 .45-4.24 1.21C15.78 6.49 14.93 8 13.5 8c-.83 0-1.5.67-1.5 1.5s.67 1.5 1.5 1.5c1.38 0 2.5-.48 3.34-1.34C17.42 10.52 19.34 12.5 19.34 16c0 3.31-2.69 6-6 6s-6-2.69-6-6c0-1.66-.67-3.16-1.76-4.24l1.42-1.42c.63.63 1.71-.52.71-1.41l-1.42-1.42C6.95 6.99 8.45 6 11.1 6c4.42 0 8 3.58 8 8s-3.58 8-8 8c-1.55 0-3-.45-4.24-1.21C6.22 19.49 7.07 18 8.5 18c.83 0 1.5-.67 1.5-1.5S9.33 15 8.5 15c-1.38 0-2.5.48-3.34 1.34C6.58 14.48 8.5 12.5 8.5 9c0-3.31-2.69-6-6-6z"/>
+          </svg>
+          Undo
         </button>
       </div>
 

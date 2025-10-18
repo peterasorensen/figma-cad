@@ -141,7 +141,7 @@ export class ShapeFactory {
    * Create a shape from saved data
    */
   createFromData(data) {
-    const { type, position, rotation, scale, properties } = data;
+    const { id, type, position, rotation, scale, properties } = data;
 
     let shape;
     switch (type) {
@@ -150,7 +150,7 @@ export class ShapeFactory {
           position.x,
           position.y,
           position.z,
-          undefined, // id
+          id, // id
           properties.width,
           properties.height,
           properties.depth,
@@ -162,7 +162,7 @@ export class ShapeFactory {
           position.x,
           position.y,
           position.z,
-          undefined, // id
+          id, // id
           properties.radius,
           properties.color
         );
@@ -172,7 +172,7 @@ export class ShapeFactory {
           position.x,
           position.y,
           position.z,
-          undefined, // id
+          id, // id
           properties.radius,
           properties.height,
           properties.color
@@ -182,7 +182,7 @@ export class ShapeFactory {
         shape = this.createRectangle(
           position.x,
           position.z,
-          undefined, // id
+          id, // id
           properties.width,
           properties.height,
           properties.color
@@ -192,7 +192,7 @@ export class ShapeFactory {
         shape = this.createCircle(
           position.x,
           position.z,
-          undefined, // id
+          id, // id
           properties.radius,
           properties.color
         );

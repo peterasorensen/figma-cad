@@ -63,9 +63,10 @@ export class App {
     this.grid = new Grid(this.scene.getScene());
     this.raycaster = new Raycaster(this.scene.getCamera(), canvas);
     this.shapeManager = new ShapeManager(this.scene.getScene());
-    // Import SnapManager and ObjectControls
+    // Import SnapManager, ObjectControls, and HistoryManager
     const { SnapManager } = await import('./core/SnapManager.js');
     const { ObjectControls } = await import('./core/ObjectControls.js');
+    const { HistoryManager } = await import('./core/HistoryManager.js');
     this.snapManager = new SnapManager(this.shapeManager);
     this.transform = new Transform(
       this.scene.getCamera(),
@@ -74,12 +75,17 @@ export class App {
       this.snapManager
     );
     this.objectControls = new ObjectControls(this.scene.getCamera(), this.transform);
+    this.historyManager = new HistoryManager();
     this.cursorManager = new CursorManager(this.scene, this.scene.getCamera());
 
-    // Set up transform controls callback for object updates
-    this.transform.onObjectChange = (object) => {
+    // Set up transform controls callbacks
+    this.transform.setChangeCallback((object) => {
       this.handleObjectTransform(object);
-    };
+    });
+
+    this.transform.setDragEndCallback((object) => {
+      this.handleDragEnd(object);
+    });
 
     // Add transform controls gizmo/helper to scene
     const gizmo = this.transform.getControls().getHelper();
@@ -104,15 +110,15 @@ export class App {
       this.initSocket();
       // Create or join canvas since user is already authenticated
       this.createOrJoinDefaultCanvas();
-    } else {
-      // If not authenticated, wait for authentication before creating canvas
-      console.log('Waiting for authentication before creating canvas...');
     }
 
-      console.log('CollabCanvas initialized successfully');
+    // Initialize undo button state
+    this.updateUndoButtonState();
 
-      // Hide loading screen
-      this.hideLoading();
+    console.log('CollabCanvas initialized successfully');
+
+    // Hide loading screen
+    this.hideLoading();
     } catch (error) {
       console.error('❌ Failed to initialize CollabCanvas:', error);
 
@@ -848,7 +854,7 @@ export class App {
     if (this.shapeManager) {
       const shape = this.shapeManager.findShapeByMesh(object);
       if (shape) {
-        // Broadcast the object update to other users
+        // Broadcast the object update to other users (during dragging)
         if (socketManager.isConnected && this.currentCanvasId) {
           const objectData = {
             id: shape.id,
@@ -867,6 +873,15 @@ export class App {
           console.log('📤 Broadcasted object update:', shape.id);
         }
       }
+    }
+  }
+
+  handleDragEnd(object) {
+    // Capture state when drag ends (for undo functionality)
+    if (this.historyManager) {
+      const selectedShapeIds = Array.from(this.shapeManager.selectedShapes);
+      this.historyManager.captureState(this.shapeManager, selectedShapeIds);
+      this.updateUndoButtonState();
     }
   }
 
@@ -910,6 +925,14 @@ export class App {
     if (snapToggle) {
       snapToggle.addEventListener('click', () => {
         this.toggleSnap();
+      });
+    }
+
+    // Undo button
+    const undoButton = document.getElementById('undo-button');
+    if (undoButton) {
+      undoButton.addEventListener('click', () => {
+        this.undo();
       });
     }
 
@@ -964,6 +987,51 @@ export class App {
       if (snapToggle) {
         snapToggle.classList.toggle('active', newState);
       }
+    }
+  }
+
+  undo() {
+    if (this.historyManager && this.historyManager.undo(this.shapeManager)) {
+      // Detach transform controls during restoration
+      this.transform.detach();
+
+      // Hide object controls during restoration
+      if (this.objectControls) {
+        this.objectControls.hide();
+      }
+
+      // Update UI after undo
+      this.updateUndoButtonState();
+
+      // Reattach transform controls to selected object if any
+      const selectedShapes = Array.from(this.shapeManager.selectedShapes);
+      if (selectedShapes.length > 0) {
+        const shapeId = selectedShapes[selectedShapes.length - 1]; // Get last selected
+        const shape = this.shapeManager.shapes.get(shapeId);
+        if (shape) {
+          // Ensure the shape's mesh is properly in the scene
+          if (!shape.mesh.parent) {
+            this.shapeManager.scene.add(shape.mesh);
+          }
+
+          // Attach transform controls
+          this.transform.attach(shape.mesh);
+
+          // Show object controls
+          if (this.objectControls) {
+            this.objectControls.show(shape.mesh);
+            this.objectControls.updateButtonStates(this.transform.getMode());
+          }
+        }
+      }
+    }
+  }
+
+  updateUndoButtonState() {
+    const undoButton = document.getElementById('undo-button');
+    if (undoButton && this.historyManager) {
+      const canUndo = this.historyManager.canUndo();
+      undoButton.disabled = !canUndo;
     }
   }
 
@@ -1081,6 +1149,13 @@ export class App {
           this.objectControls.updateButtonStates(this.transform.getMode());
         }
 
+        // Capture state for undo functionality
+        if (this.historyManager) {
+          const selectedShapeIds = Array.from(this.shapeManager.selectedShapes);
+          this.historyManager.captureState(this.shapeManager, selectedShapeIds);
+          this.updateUndoButtonState();
+        }
+
         // Broadcast object creation to other users
         if (socketManager.isConnected && this.currentCanvasId) {
           const objectData = {
@@ -1169,6 +1244,13 @@ export class App {
           this.toggleGrid();
         }
         break;
+      case 'z':
+        if (e.ctrlKey || e.metaKey) {
+          // Ctrl+Z / Cmd+Z for undo
+          e.preventDefault();
+          this.undo();
+        }
+        break;
       case 'escape':
         // Deselect all
         if (this.shapeManager) {
@@ -1185,6 +1267,13 @@ export class App {
       case 'backspace':
         // Delete selected shapes
         if (this.shapeManager) {
+          // Capture state before deletion for undo functionality
+          if (this.historyManager) {
+            const selectedShapeIds = Array.from(this.shapeManager.selectedShapes);
+            this.historyManager.captureState(this.shapeManager, selectedShapeIds);
+            this.updateUndoButtonState();
+          }
+
           this.transform.detach();
           if (this.objectControls) {
             this.objectControls.hide();
