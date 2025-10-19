@@ -420,8 +420,10 @@ export class App {
 
   handleObjectTransform(object) {
     // Throttle object updates for smooth dragging (60fps)
+    // But allow resize updates more frequently for better sync
     const now = Date.now();
-    if (now - this.lastObjectUpdate < 16) { // Throttle to 60fps for smooth dragging
+    const throttleTime = this.transform?.getMode() === 'resize' ? 8 : 16; // 120fps for resize, 60fps for others
+    if (now - this.lastObjectUpdate < throttleTime) {
       return;
     }
     this.lastObjectUpdate = now;

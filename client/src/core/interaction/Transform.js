@@ -171,6 +171,9 @@ export class Transform {
           // Update the transform controls to reflect the snapped position
           this.controls.object.position.copy(this.attachedObject.position);
           needsUpdate = true;
+
+          // Force the controls to update their internal state
+          this.controls.update();
         }
         break;
 
@@ -192,6 +195,9 @@ export class Transform {
           // Update the transform controls to reflect the snapped rotation
           this.controls.object.rotation.copy(this.attachedObject.rotation);
           needsUpdate = true;
+
+          // Force the controls to update their internal state
+          this.controls.update();
         }
         break;
 
@@ -215,6 +221,9 @@ export class Transform {
           // Update the transform controls to reflect the snapped scale
           this.controls.object.scale.copy(this.attachedObject.scale);
           needsUpdate = true;
+
+          // Force the controls to update their internal state
+          this.controls.update();
         }
         break;
 

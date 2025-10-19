@@ -67,7 +67,6 @@ export class SnapManager {
       if (excludeShapeId && id === excludeShapeId) continue;
 
       const shapePos = shape.getPosition();
-      const shapeScale = shape.getScale();
 
       // Calculate snap points for this shape
       const snapPoints = this.getShapeSnapPoints(shape);
