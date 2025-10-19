@@ -1,5 +1,5 @@
 import { io } from 'socket.io-client'
-import { auth } from './Auth.js'
+import { auth } from '../auth/Auth.js'
 
 export class SocketManager {
   constructor() {

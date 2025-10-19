@@ -1,4 +1,4 @@
-import { auth } from '../core/Auth.js'
+import { auth } from '../core/auth/Auth.js'
 
 export class AuthModal {
   constructor() {
