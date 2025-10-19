@@ -241,6 +241,10 @@ export class Shape {
    */
   clone() {
     const clonedMesh = this.mesh.clone();
+    // Deep clone geometry to avoid sharing geometry between original and duplicate
+    clonedMesh.geometry = this.mesh.geometry.clone();
+    // Deep clone material to avoid sharing material instances
+    clonedMesh.material = this.mesh.material.clone();
     const clonedShape = new Shape(this.type, clonedMesh, { ...this.properties });
     return clonedShape;
   }

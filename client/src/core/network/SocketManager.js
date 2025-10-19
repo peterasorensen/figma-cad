@@ -54,38 +54,38 @@ export class SocketManager {
     // Canvas events
     this.socket.on('canvas-state', (data) => {
       console.log('📨 Socket received canvas-state:', data)
-      this.onCanvasState?.(data)
+      this.onCanvasStateCallback?.(data)
     })
 
     this.socket.on('user-joined', (data) => {
-      this.onUserJoined?.(data)
+      this.onUserJoinedCallback?.(data)
     })
 
     this.socket.on('user-left', (data) => {
-      this.onUserLeft?.(data)
+      this.onUserLeftCallback?.(data)
     })
 
     this.socket.on('cursor-update', (data) => {
-      this.onCursorUpdate?.(data)
+      this.onCursorUpdateCallback?.(data)
     })
 
     // Object events
     this.socket.on('object-created', (data) => {
-      this.onObjectCreated?.(data)
+      this.onObjectCreatedCallback?.(data)
     })
 
     this.socket.on('object-updated', (data) => {
-      this.onObjectUpdated?.(data)
+      this.onObjectUpdatedCallback?.(data)
     })
 
     this.socket.on('object-deleted', (data) => {
-      this.onObjectDeleted?.(data)
+      this.onObjectDeletedCallback?.(data)
     })
 
     // Error handling
     this.socket.on('error', (error) => {
       console.error('Socket error:', error)
-      this.onError?.(error)
+      this.onErrorCallback?.(error)
     })
 
     this.socket.connect()
@@ -208,35 +208,35 @@ export class SocketManager {
 
   // Event callbacks
   onCanvasState(callback) {
-    this.onCanvasState = callback
+    this.onCanvasStateCallback = callback
   }
 
   onUserJoined(callback) {
-    this.onUserJoined = callback
+    this.onUserJoinedCallback = callback
   }
 
   onUserLeft(callback) {
-    this.onUserLeft = callback
+    this.onUserLeftCallback = callback
   }
 
   onCursorUpdate(callback) {
-    this.onCursorUpdate = callback
+    this.onCursorUpdateCallback = callback
   }
 
   onObjectCreated(callback) {
-    this.onObjectCreated = callback
+    this.onObjectCreatedCallback = callback
   }
 
   onObjectUpdated(callback) {
-    this.onObjectUpdated = callback
+    this.onObjectUpdatedCallback = callback
   }
 
   onObjectDeleted(callback) {
-    this.onObjectDeleted = callback
+    this.onObjectDeletedCallback = callback
   }
 
   onError(callback) {
-    this.onError = callback
+    this.onErrorCallback = callback
   }
 }
 

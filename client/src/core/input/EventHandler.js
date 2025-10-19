@@ -341,6 +341,11 @@ export class EventHandler {
       // Track duplicated shapes in history
       this.trackShapeCreation(duplicatedShapes);
 
+      // Broadcast duplicated shapes to other users
+      duplicatedShapes.forEach(shape => {
+        this.broadcastShapeCreation(shape);
+      });
+
       // Attach transform controls to the last duplicated shape
       const lastShape = duplicatedShapes[duplicatedShapes.length - 1];
       this.app.transform.attach(lastShape.mesh);
