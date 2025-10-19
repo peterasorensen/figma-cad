@@ -1185,6 +1185,15 @@ export class App {
         if (this.shapeManager) {
           const duplicatedShapes = this.shapeManager.duplicateSelected();
           if (duplicatedShapes.length > 0) {
+            // Track duplicated shapes in history
+            if (this.historyManager) {
+              const selectedShapeIds = Array.from(this.shapeManager.selectedShapes);
+              duplicatedShapes.forEach(shape => {
+                this.historyManager.pushCreate(shape, selectedShapeIds);
+              });
+              this.updateUndoRedoButtonStates();
+            }
+
             // Attach transform controls to the last duplicated shape
             const lastShape = duplicatedShapes[duplicatedShapes.length - 1];
             this.transform.attach(lastShape.mesh);
@@ -1438,6 +1447,15 @@ export class App {
         if ((e.ctrlKey || e.metaKey) && this.shapeManager) {
           const duplicatedShapes = this.shapeManager.duplicateSelected();
           if (duplicatedShapes.length > 0) {
+            // Track duplicated shapes in history
+            if (this.historyManager) {
+              const selectedShapeIds = Array.from(this.shapeManager.selectedShapes);
+              duplicatedShapes.forEach(shape => {
+                this.historyManager.pushCreate(shape, selectedShapeIds);
+              });
+              this.updateUndoRedoButtonStates();
+            }
+
             // Attach transform controls to the last duplicated shape
             const lastShape = duplicatedShapes[duplicatedShapes.length - 1];
             this.transform.attach(lastShape.mesh);
