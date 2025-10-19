@@ -336,6 +336,63 @@
       transform: translateY(-200%) translateX(-20%);
     }
 
+    /* Modifiers dropdown */
+    .modifiers-container {
+      position: relative;
+    }
+
+    .modifiers-button {
+      position: relative;
+    }
+
+    .dropdown-arrow {
+      position: absolute;
+      bottom: 2px;
+      right: 2px;
+      pointer-events: none;
+    }
+
+    .modifiers-menu {
+      position: absolute;
+      top: 100%;
+      left: 0;
+      background: rgba(42, 42, 42, 0.95);
+      border: 1px solid #3a3a3a;
+      border-radius: 8px;
+      padding: 4px 0;
+      min-width: 120px;
+      display: none;
+      z-index: 1001;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+      margin-top: 4px;
+    }
+
+    .modifiers-menu.show {
+      display: block;
+    }
+
+    .modifiers-menu-item {
+      padding: 8px 12px;
+      cursor: pointer;
+      color: #ffffff;
+      font-size: 14px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      transition: background 0.2s;
+    }
+
+    .modifiers-menu-item:hover {
+      background: #4a4a4a;
+    }
+
+    .checkmark {
+      width: 16px;
+      text-align: center;
+      color: #5a8fd6;
+      font-weight: bold;
+    }
+
     /* Multiplayer cursors */
     .multiplayer-cursor {
       position: absolute;
@@ -563,6 +620,31 @@
               <rect x="10" y="15" width="5" height="2"/>
             </svg>
           </button>
+          <div class="modifiers-container">
+            <button class="object-control-button tooltip modifiers-button" data-action="modifiers" data-tooltip="Apply modifiers">
+              <svg id='Programming_Module_24' width='24' height='24' viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg' xmlns:xlink='http://www.w3.org/1999/xlink'><rect width='24' height='24' stroke='none' fill='#000000' opacity='0'/>
+                <g transform="matrix(1.43 0 0 1.43 12 12)" >
+                  <g style="" >
+                    <g transform="matrix(1 0 0 1 0 0)" >
+                      <path style="stroke: none; stroke-width: 1; stroke-dasharray: none; stroke-linecap: butt; stroke-dashoffset: 0; stroke-linejoin: miter; stroke-miterlimit: 4; fill: rgb(255,185,236); fill-rule: evenodd; opacity: 1;" transform=" translate(-7, -7)" d="M 6.99943 0.071228 C 6.873 0.071228 6.74789 0.096463 6.63142 0.145405 L 0.660594 2.44417 C 0.509061 2.48971 0.370799 2.57168 0.258013 2.68312 C 0.246077 2.69491 0.234742 2.7073 0.224052 2.72023 C 0.0814377 2.89276 0.00218278 3.10891 -0.000531465 3.33273 L -0.000568211 3.33273 L -0.000568211 3.3388 L -0.000568211 10.6588 L -0.000610352 10.6588 L -0.000526071 10.6653 C 0.00206763 10.865 0.0644159 11.0594 0.178484 11.2234 C 0.292553 11.3873 0.453114 11.5134 0.639474 11.5853 L 0.639786 11.5854 L 6.63979 13.8954 C 6.69711 13.9175 6.75801 13.9288 6.81943 13.9288 L 6.99943 13.9288 L 7.17943 13.9288 C 7.24086 13.9288 7.30175 13.9175 7.35908 13.8954 L 13.3591 11.5854 L 13.3594 11.5853 C 13.5457 11.5134 13.7063 11.3873 13.8204 11.2234 C 13.9344 11.0594 13.9968 10.865 13.9994 10.6653 L 13.9994 10.6653 L 13.9994 10.6588 L 13.9994 3.39291 C 14.0109 3.15307 13.934 2.91723 13.7831 2.7303 C 13.6739 2.58688 13.527 2.47661 13.3586 2.41198 L 13.3564 2.41115 L 7.36586 0.14474 C 7.24983 0.0962343 7.12529 0.071228 6.99943 0.071228 Z" stroke-linecap="round" />
+                    </g>
+                    <g transform="matrix(1 0 0 1 0 1.29)" >
+                      <path style="stroke: none; stroke-width: 1; stroke-dasharray: none; stroke-linecap: butt; stroke-dashoffset: 0; stroke-linejoin: miter; stroke-miterlimit: 4; fill: rgb(248,59,172); fill-rule: evenodd; opacity: 1;" transform=" translate(-7, -8.29)" d="M 13.7219 2.65747 L 6.99956 5.2454 L 0.282754 2.65959 C 0.274406 2.66728 0.266184 2.67512 0.258093 2.68312 C 0.246157 2.69491 0.234822 2.7073 0.224132 2.72023 C 0.0815176 2.89275 0.00226271 3.1089 -0.000451535 3.33273 L -0.000488281 3.33273 L -0.000488281 3.33879 L -0.000488281 3.88998 L 6.37464 6.34425 L 6.37464 13.7933 L 6.63987 13.8954 C 6.69719 13.9175 6.75809 13.9288 6.81951 13.9288 L 6.99951 13.9288 L 7.17951 13.9288 C 7.24094 13.9288 7.30183 13.9175 7.35916 13.8954 L 7.62464 13.7932 L 7.62464 6.34419 L 13.9995 3.89001 L 13.9995 3.39291 C 14.011 3.15306 13.9341 2.91722 13.7831 2.7303 C 13.7639 2.70496 13.7434 2.68067 13.7219 2.65747 Z" stroke-linecap="round" />
+                    </g>
+                  </g>
+                </g>
+                </svg>
+              <svg class="dropdown-arrow" viewBox="0 0 20 20" width="8" height="8">
+                <path d="M7 10l5 5 5-5z" fill="currentColor"/>
+              </svg>
+            </button>
+            <div class="modifiers-menu">
+              <div class="modifiers-menu-item" data-modifier="bevel">
+                <span class="checkmark">✓</span>
+                Bevel
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>

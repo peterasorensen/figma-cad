@@ -50,6 +50,9 @@ export class ObjectControls {
         button.addEventListener('click', () => this.executeAction(action));
       }
     });
+
+    // Set up modifiers button
+    this.setupModifiers();
   }
 
   /**
@@ -63,6 +66,9 @@ export class ObjectControls {
 
     // Position controls above the object
     this.positionAboveObject(object);
+
+    // Update modifier states based on selected object
+    this.updateModifierStates(object);
   }
 
   /**
@@ -73,6 +79,7 @@ export class ObjectControls {
 
     this.isVisible = false;
     this.container.style.display = 'none';
+    this.hideModifiersMenu();
   }
 
   /**
@@ -94,6 +101,84 @@ export class ObjectControls {
     this.buttons.forEach((button, mode) => {
       button.classList.toggle('active', mode === activeMode);
     });
+  }
+
+  /**
+   * Set up modifiers dropdown functionality
+   */
+  setupModifiers() {
+    this.modifiersMenu = this.container.querySelector('.modifiers-menu');
+    this.modifiersButton = this.container.querySelector('.modifiers-button');
+
+    if (this.modifiersButton && this.modifiersMenu) {
+      // Toggle menu on button click
+      this.modifiersButton.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.toggleModifiersMenu();
+      });
+
+      // Handle menu item clicks
+      const menuItems = this.modifiersMenu.querySelectorAll('.modifiers-menu-item');
+      menuItems.forEach(item => {
+        item.addEventListener('click', (e) => {
+          const modifier = e.currentTarget.dataset.modifier;
+          this.applyModifier(modifier);
+          this.hideModifiersMenu();
+        });
+      });
+
+      // Close menu when clicking outside
+      document.addEventListener('click', (e) => {
+        if (!this.container.contains(e.target)) {
+          this.hideModifiersMenu();
+        }
+      });
+    }
+  }
+
+  /**
+   * Toggle the modifiers menu visibility
+   */
+  toggleModifiersMenu() {
+    if (this.modifiersMenu) {
+      this.modifiersMenu.classList.toggle('show');
+    }
+  }
+
+  /**
+   * Hide the modifiers menu
+   */
+  hideModifiersMenu() {
+    if (this.modifiersMenu) {
+      this.modifiersMenu.classList.remove('show');
+    }
+  }
+
+  /**
+   * Apply a modifier to the selected object
+   */
+  applyModifier(modifier) {
+    // Dispatch a custom event that the App can listen to
+    const event = new CustomEvent('objectModifierAction', {
+      detail: { modifier }
+    });
+    document.dispatchEvent(event);
+  }
+
+  /**
+   * Update modifier menu states based on the selected object
+   */
+  updateModifierStates(object) {
+    if (!this.modifiersMenu || !object) return;
+
+    // Check if the object has bevel enabled
+    const hasBevel = object.userData.bevelEnabled || false;
+
+    // Update bevel checkmark
+    const bevelItem = this.modifiersMenu.querySelector('[data-modifier="bevel"] .checkmark');
+    if (bevelItem) {
+      bevelItem.style.visibility = hasBevel ? 'visible' : 'hidden';
+    }
   }
 
   /**
