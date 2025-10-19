@@ -28,6 +28,41 @@ export class ShapeFactory {
   }
 
   /**
+   * Create shape directly from pre-built geometry (for remote sync)
+   * Avoids double allocation - geometry is already deserialized
+   */
+  createFromGeometry(geometry, x = 0, y = 1, z = 0, id = null, properties = {}, type = 'mesh') {
+    const { color } = properties;
+
+    // Ensure geometry has required attributes
+    if (!geometry.attributes.normal) {
+      geometry.computeVertexNormals();
+    }
+    if (!geometry.boundingBox) {
+      geometry.computeBoundingBox();
+    }
+    if (!geometry.boundingSphere) {
+      geometry.computeBoundingSphere();
+    }
+
+    const material = new THREE.MeshStandardMaterial({
+      color: color,
+      roughness: 0.5,
+      metalness: 0.3
+    });
+
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.position.set(x, y, z);
+    mesh.scale.set(1, 1, 1); // Geometry should be baked
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+
+    return new Shape(type, mesh, {
+      color: '#' + material.color.getHexString()
+    }, id);
+  }
+
+  /**
    * Create a 3D box
    */
   createBox(x = 0, y = 1, z = 0, id = null, properties = {}) {

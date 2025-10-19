@@ -955,16 +955,11 @@ export class App {
             rotation_x: object.rotation.x,
             rotation_y: object.rotation.y,
             rotation_z: object.rotation.z,
-            // Reset scale to 1,1,1 after baking (scale is now baked into geometry)
             scale_x: 1,
             scale_y: 1,
             scale_z: 1,
             color: shape.properties.color || '#ffffff',
-            width: shape.properties.width || shape.properties.radius || 2,
-            height: shape.properties.height || 2,
-            depth: shape.properties.depth || 2,
-            // Serialize baked geometry for persistence
-            geometry: shape.serializeGeometry()
+            geometry: shape.serializeGeometry() // Geometry is single source of truth
           };
 
           socketManager.updateObject(shape.id, objectData);
@@ -1316,11 +1311,7 @@ export class App {
             rotation_y: shape.mesh.rotation.y,
             rotation_z: shape.mesh.rotation.z,
             color: shape.properties.color || '#ffffff',
-            width: shape.properties.width || shape.properties.radius || 2,
-            height: shape.properties.height || 2,
-            depth: shape.properties.depth || 2,
-            // Serialize full geometry for persistence
-            geometry: shape.serializeGeometry(),
+            geometry: shape.serializeGeometry(), // Geometry is single source of truth
             canvas_id: this.currentCanvasId,
             created_by: auth.userId
           };

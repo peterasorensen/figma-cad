@@ -139,16 +139,11 @@ export class Shape {
   }
 
   /**
-   * Deserialize and apply geometry from JSON
-   * Replaces the mesh's geometry with reconstructed BufferGeometry
+   * Static method to deserialize geometry from JSON
+   * Returns a THREE.BufferGeometry ready to use
    */
-  applySerializedGeometry(serializedGeometry) {
-    if (!serializedGeometry || !this.mesh) return;
-
-    // Dispose old geometry
-    if (this.mesh.geometry) {
-      this.mesh.geometry.dispose();
-    }
+  static deserializeGeometry(serializedGeometry) {
+    if (!serializedGeometry) return null;
 
     // Create new BufferGeometry
     const geometry = new THREE.BufferGeometry();
@@ -202,6 +197,25 @@ export class Shape {
         )
       );
     }
+
+    return geometry;
+  }
+
+  /**
+   * Instance method to apply serialized geometry
+   * Replaces the mesh's geometry with reconstructed BufferGeometry
+   */
+  applySerializedGeometry(serializedGeometry) {
+    if (!serializedGeometry || !this.mesh) return;
+
+    // Dispose old geometry
+    if (this.mesh.geometry) {
+      this.mesh.geometry.dispose();
+    }
+
+    // Deserialize using static method
+    const geometry = Shape.deserializeGeometry(serializedGeometry);
+    if (!geometry) return;
 
     // Apply the new geometry to the mesh
     this.mesh.geometry = geometry;

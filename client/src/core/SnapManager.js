@@ -90,104 +90,86 @@ export class SnapManager {
   }
 
   /**
-   * Get snap points for a shape (edges, corners, centers)
+   * Get snap points for a shape (center, corners, face centers)
+   * Uses generic bounding box - works for any shape regardless of type
+   * Handles rotation/scale/position correctly by transforming from local to world space
+   * Returns Vector3s for downstream math compatibility
    */
   getShapeSnapPoints(shape) {
-    const position = shape.getPosition();
-    const scale = shape.getScale();
     const points = [];
+    const mesh = shape?.mesh;
+    const geo = mesh?.geometry;
+    if (!mesh || !geo) return points;
 
-    // For now, we'll focus on basic shapes and their bounding box snap points
-    // This can be expanded for more complex snapping logic
-
-    switch (shape.type) {
-      case 'box':
-      case 'rectangle':
-        // Add corner points and center
-        const halfWidth = scale.x / 2;
-        const halfHeight = scale.y / 2;
-        const halfDepth = scale.z / 2;
-
-        // Center
-        points.push({
-          x: position.x,
-          y: position.y,
-          z: position.z
-        });
-
-        // Corner points
-        for (let xSign of [-1, 1]) {
-          for (let ySign of [-1, 1]) {
-            for (let zSign of [-1, 1]) {
-              points.push({
-                x: position.x + xSign * halfWidth,
-                y: position.y + ySign * halfHeight,
-                z: position.z + zSign * halfDepth
-              });
-            }
-          }
-        }
-
-        // Edge midpoints
-        points.push(
-          { x: position.x + halfWidth, y: position.y, z: position.z },
-          { x: position.x - halfWidth, y: position.y, z: position.z },
-          { x: position.x, y: position.y + halfHeight, z: position.z },
-          { x: position.x, y: position.y - halfHeight, z: position.z },
-          { x: position.x, y: position.y, z: position.z + halfDepth },
-          { x: position.x, y: position.y, z: position.z - halfDepth }
-        );
-        break;
-
-      case 'sphere':
-      case 'circle':
-        // Add center point and surface points
-        points.push({
-          x: position.x,
-          y: position.y,
-          z: position.z
-        });
-
-        // Cardinal direction points
-        const radius = Math.max(scale.x, scale.y, scale.z) / 2;
-        points.push(
-          { x: position.x + radius, y: position.y, z: position.z },
-          { x: position.x - radius, y: position.y, z: position.z },
-          { x: position.x, y: position.y + radius, z: position.z },
-          { x: position.x, y: position.y - radius, z: position.z },
-          { x: position.x, y: position.y, z: position.z + radius },
-          { x: position.x, y: position.y, z: position.z - radius }
-        );
-        break;
-
-      case 'cylinder':
-        // Add center point and edge points
-        points.push({
-          x: position.x,
-          y: position.y,
-          z: position.z
-        });
-
-        const cylRadius = Math.max(scale.x, scale.z) / 2;
-        const cylHeight = scale.y;
-
-        // Top and bottom centers
-        points.push(
-          { x: position.x, y: position.y + cylHeight / 2, z: position.z },
-          { x: position.x, y: position.y - cylHeight / 2, z: position.z }
-        );
-
-        // Side points
-        points.push(
-          { x: position.x + cylRadius, y: position.y, z: position.z },
-          { x: position.x - cylRadius, y: position.y, z: position.z },
-          { x: position.x, y: position.y, z: position.z + cylRadius },
-          { x: position.x, y: position.y, z: position.z - cylRadius }
-        );
-        break;
+    // Compute/cache local snap points if not already cached
+    if (!shape._snapCache) {
+      this.computeSnapCache(shape);
     }
 
+    // If cache failed, return empty
+    if (!shape._snapCache) return points;
+
+    // Transform all cached local points to world space
+    mesh.updateMatrixWorld(true);
+
+    // Reuse temp vector to avoid GC pressure
+    const tmp = new THREE.Vector3();
+    const toWorld = (src) => tmp.copy(src).applyMatrix4(mesh.matrixWorld).clone();
+
+    const cache = shape._snapCache;
+    points.push(toWorld(cache.centerLocal));
+    for (const c of cache.cornersLocal) points.push(toWorld(c));
+    for (const fc of cache.facesLocal) points.push(toWorld(fc));
+
     return points;
+  }
+
+  /**
+   * Compute and cache local-space snap points for a shape
+   * Should be called when geometry changes (creation, bake, boolean ops)
+   */
+  computeSnapCache(shape) {
+    const geo = shape?.mesh?.geometry;
+    if (!geo) return;
+
+    // Ensure bbox is up-to-date
+    if (!geo.boundingBox) geo.computeBoundingBox();
+    const bb = geo.boundingBox;
+    if (!bb) return;
+
+    const mins = bb.min, maxs = bb.max;
+
+    // Precompute 8 corners in local space
+    const cornersLocal = [
+      new THREE.Vector3(mins.x, mins.y, mins.z),
+      new THREE.Vector3(maxs.x, mins.y, mins.z),
+      new THREE.Vector3(mins.x, maxs.y, mins.z),
+      new THREE.Vector3(maxs.x, maxs.y, mins.z),
+      new THREE.Vector3(mins.x, mins.y, maxs.z),
+      new THREE.Vector3(maxs.x, mins.y, maxs.z),
+      new THREE.Vector3(mins.x, maxs.y, maxs.z),
+      new THREE.Vector3(maxs.x, maxs.y, maxs.z),
+    ];
+
+    // Center in local space
+    const centerLocal = new THREE.Vector3().addVectors(mins, maxs).multiplyScalar(0.5);
+
+    // 6 face centers in local space (±X, ±Y, ±Z)
+    const facesLocal = [
+      new THREE.Vector3(maxs.x, centerLocal.y, centerLocal.z),
+      new THREE.Vector3(mins.x, centerLocal.y, centerLocal.z),
+      new THREE.Vector3(centerLocal.x, maxs.y, centerLocal.z),
+      new THREE.Vector3(centerLocal.x, mins.y, centerLocal.z),
+      new THREE.Vector3(centerLocal.x, centerLocal.y, maxs.z),
+      new THREE.Vector3(centerLocal.x, centerLocal.y, mins.z),
+    ];
+
+    // Cache on shape for reuse
+    shape._snapCache = {
+      cornersLocal,
+      centerLocal,
+      facesLocal
+    };
   }
 
   /**

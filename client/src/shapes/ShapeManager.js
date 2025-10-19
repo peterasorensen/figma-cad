@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { ShapeFactory } from './ShapeFactory.js';
+import { Shape } from './Shape.js';
 
 /**
  * Manages all shapes in the scene
@@ -18,13 +19,14 @@ export class ShapeManager {
    * Create a new shape and add to scene
    * SINGLE SOURCE OF TRUTH for all shape creation
    *
-   * @param {string} type - Shape type (box, sphere, cylinder, rectangle, circle)
+   * @param {string} type - Shape type (box, sphere, cylinder, rectangle, circle) - only used if no geometry provided
    * @param {object} position - {x, y, z} position
-   * @param {object} properties - {width, height, depth, radius, color} shape-specific properties
+   * @param {object} properties - {width, height, depth, radius, color} shape-specific properties (ignored if geometry provided)
    * @param {string} id - Optional shape ID (for deserialization/sync)
    * @param {object} transform - Optional {rotation: {x,y,z}} for deserialization
+   * @param {THREE.BufferGeometry} geometry - Optional pre-built geometry (for remote sync - avoids double allocation)
    */
-  createShape(type, position = {}, properties = {}, id = null, transform = null) {
+  createShape(type, position = {}, properties = {}, id = null, transform = null, geometry = null) {
     let shape;
 
     const x = position.x || 0;
@@ -41,25 +43,31 @@ export class ShapeManager {
       color: properties.color !== undefined ? properties.color : this.factory.getNextColor()
     };
 
-    switch (type) {
-      case 'box':
-        shape = this.factory.createBox(x, y, z, id, props);
-        break;
-      case 'sphere':
-        shape = this.factory.createSphere(x, y, z, id, props);
-        break;
-      case 'cylinder':
-        shape = this.factory.createCylinder(x, y, z, id, props);
-        break;
-      case 'rectangle':
-        shape = this.factory.createRectangle(x, z, id, props);
-        break;
-      case 'circle':
-        shape = this.factory.createCircle(x, z, id, props);
-        break;
-      default:
-        console.warn(`Unknown shape type: ${type}`);
-        return null;
+    // If geometry is provided, create shape directly from it (remote sync path)
+    if (geometry) {
+      shape = this.factory.createFromGeometry(geometry, x, y, z, id, props, type);
+    } else {
+      // Otherwise create from type (local creation path)
+      switch (type) {
+        case 'box':
+          shape = this.factory.createBox(x, y, z, id, props);
+          break;
+        case 'sphere':
+          shape = this.factory.createSphere(x, y, z, id, props);
+          break;
+        case 'cylinder':
+          shape = this.factory.createCylinder(x, y, z, id, props);
+          break;
+        case 'rectangle':
+          shape = this.factory.createRectangle(x, z, id, props);
+          break;
+        case 'circle':
+          shape = this.factory.createCircle(x, z, id, props);
+          break;
+        default:
+          console.warn(`Unknown shape type: ${type}`);
+          return null;
+      }
     }
 
     if (shape) {
@@ -75,7 +83,7 @@ export class ShapeManager {
       // Manager handles scene and state (ONLY place this happens)
       this.shapes.set(shape.id, shape);
       this.scene.add(shape.mesh);
-      console.log(`Created ${type} with id: ${shape.id}`);
+      console.log(`Created ${geometry ? 'shape from geometry' : type} with id: ${shape.id}`);
     }
 
     return shape;
@@ -299,79 +307,37 @@ export class ShapeManager {
   }
 
   /**
-   * Update shape properties based on the scale that was applied
-   * Called after baking scale to sync properties with actual geometry
+   * Invalidate cached data after geometry modifications
+   * Called after baking scale into geometry
    */
   updateShapePropertiesFromScale(shape, scale) {
-    switch (shape.type) {
-      case 'box':
-        shape.properties.width *= scale.x;
-        shape.properties.height *= scale.y;
-        shape.properties.depth *= scale.z;
-        break;
-
-      case 'sphere':
-        // For sphere, apply average scale (could be ellipsoid now)
-        const avgScale = (scale.x + scale.y + scale.z) / 3;
-        shape.properties.radius *= avgScale;
-        break;
-
-      case 'cylinder':
-        shape.properties.radius *= Math.max(scale.x, scale.z);
-        shape.properties.height *= scale.y;
-        break;
-
-      case 'rectangle':
-        shape.properties.width *= scale.x;
-        shape.properties.height *= scale.z;
-        break;
-
-      case 'circle':
-        const avgScaleXZ = (scale.x + scale.z) / 2;
-        shape.properties.radius *= avgScaleXZ;
-        break;
+    // Invalidate snap cache since geometry changed
+    if (shape._snapCache) {
+      delete shape._snapCache;
     }
 
-    console.log(`Updated properties for ${shape.type}:`, shape.properties);
+    // Geometry is the single source of truth - no type-specific properties needed
+    console.log(`Baked scale into geometry for shape ${shape.id}:`, scale);
   }
 
   /**
    * Create shape from remote data (for synchronization)
-   * Uses the unified createShape() method
-   * If geometry data is present, applies it after creation
+   * Geometry is the single source of truth - avoids double allocation
    */
   createShapeFromData(data) {
     try {
+      // Geometry must be present
+      if (!data.geometry) {
+        console.error('Cannot create shape without geometry data:', data.id);
+        return null;
+      }
+
       const position = {
         x: data.position_x || 0,
         y: data.position_y || 0,
         z: data.position_z || 0
       };
 
-      // Map generic properties to shape-specific properties
-      const properties = {
-        color: data.color || '#ffffff'
-      };
-
-      // Add shape-specific properties based on type
-      switch (data.type) {
-        case 'box':
-        case 'rectangle':
-          properties.width = data.width || 2;
-          properties.height = data.height || 2;
-          properties.depth = data.depth || 2;
-          break;
-        case 'sphere':
-        case 'circle':
-          properties.radius = data.width || 1;
-          break;
-        case 'cylinder':
-          properties.radius = data.width || 1;
-          properties.height = data.height || 2;
-          break;
-      }
-
-      // Build transform object (rotation only)
       const transform = {
         rotation: {
           x: data.rotation_x || 0,
@@ -380,23 +346,28 @@ export class ShapeManager {
         }
       };
 
-      // Use unified createShape method - SINGLE SOURCE OF TRUTH
-      const shape = this.createShape(data.type, position, properties, data.id, transform);
+      const properties = {
+        color: data.color || '#ffffff'
+      };
+
+      // Deserialize geometry first (static method, no shape instance needed)
+      const geometry = Shape.deserializeGeometry(data.geometry);
+
+      if (!geometry) {
+        console.error('Failed to deserialize geometry for shape:', data.id);
+        return null;
+      }
+
+      // Create shape directly from geometry (avoids double allocation)
+      const shape = this.createShape(data.type, position, properties, data.id, transform, geometry);
 
       if (shape) {
-        // If geometry data is present (from DB), apply it to replace default geometry
-        // This preserves baked scale and non-uniform transformations
-        if (data.geometry) {
-          shape.applySerializedGeometry(data.geometry);
-          console.log(`Created shape from remote data with custom geometry: ${data.id} (${data.type})`);
-        } else {
-          console.log(`Created shape from remote data with default geometry: ${data.id} (${data.type})`);
-        }
+        console.log(`✓ Created shape from geometry: ${data.id}`);
       }
 
       return shape;
     } catch (error) {
-      console.error('Error creating shape from remote data:', error);
+      console.error('Error creating shape from data:', error);
       return null;
     }
   }
