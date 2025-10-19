@@ -117,7 +117,7 @@ export class HistoryHelper {
 
         // Show object controls
         if (this.app.objectControls) {
-          this.app.objectControls.show(shape.mesh);
+          this.app.objectControls.show(shape.mesh, shape);
           this.app.objectControls.updateButtonStates(this.app.transform.getMode());
         }
       }

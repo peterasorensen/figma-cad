@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { Shape } from './Shape.js';
+import { TextShape } from './Text.js';
 
 /**
  * Factory for creating different types of shapes
@@ -175,6 +176,19 @@ export class ShapeFactory {
       radius,
       color: '#' + material.color.getHexString()
     }, id);
+  }
+
+  /**
+   * Create a 3D text object
+   */
+  createText(x = 0, y = 1, z = 0, id = null, properties = {}) {
+    const { text, fontSize, fontDepth, color } = properties;
+    return new TextShape(text, x, y, z, id, {
+      text: text || 'Text',
+      fontSize: fontSize || 1,
+      fontDepth: fontDepth || 0.1,
+      color: color
+    });
   }
 
 }

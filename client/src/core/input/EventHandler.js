@@ -138,6 +138,9 @@ export class EventHandler {
       case 'o':
         this.handleToolClick('circle');
         break;
+      case 't':
+        this.handleToolClick('text');
+        break;
       case 'q':
         // Set translate mode
         if (this.app.objectControls) {
@@ -246,7 +249,7 @@ export class EventHandler {
 
         // Show object controls above the selected object
         if (this.app.objectControls) {
-          this.app.objectControls.show(shape.mesh);
+          this.app.objectControls.show(shape.mesh, shape);
           this.app.objectControls.updateButtonStates(this.app.transform.getMode());
         }
 
@@ -308,7 +311,7 @@ export class EventHandler {
 
         // Show object controls above the selected object
         if (this.app.objectControls) {
-          this.app.objectControls.show(shape.mesh);
+          this.app.objectControls.show(shape.mesh, shape);
           this.app.objectControls.updateButtonStates(this.app.transform.getMode());
         }
       }
@@ -360,7 +363,7 @@ export class EventHandler {
 
       // Show object controls above the selected object
       if (this.app.objectControls) {
-        this.app.objectControls.show(lastShape.mesh);
+        this.app.objectControls.show(lastShape.mesh, lastShape);
         this.app.objectControls.updateButtonStates(this.app.transform.getMode());
       }
     }

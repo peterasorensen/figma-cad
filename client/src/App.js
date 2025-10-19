@@ -112,6 +112,11 @@ export class App {
       this.handleDragEnd(object);
     });
 
+    // Set up text editing event listener
+    document.addEventListener('textEdited', (e) => {
+      this.handleTextEdited(e.detail);
+    });
+
     // Add transform controls gizmo/helper to scene
     const gizmo = this.transform.getControls().getHelper();
     this.scene.getScene().add(gizmo);
@@ -507,7 +512,52 @@ export class App {
     }
   }
 
+  /**
+   * Handle text editing updates
+   */
+  handleTextEdited(detail) {
+    const { shapeId, oldText, newText } = detail;
 
+    // Find the shape
+    const shape = this.shapeManager.getShape(shapeId);
+    if (!shape) return;
+
+    // Update shape properties
+    shape.properties.text = newText;
+
+    // Broadcast text change to other users
+    if (socketManager.isConnected && this.currentCanvasId) {
+      const objectData = {
+        id: shape.id,
+        position_x: shape.mesh.position.x,
+        position_y: shape.mesh.position.y,
+        position_z: shape.mesh.position.z,
+        rotation_x: shape.mesh.rotation.x,
+        rotation_y: shape.mesh.rotation.y,
+        rotation_z: shape.mesh.rotation.z,
+        scale_x: shape.mesh.scale.x,
+        scale_y: shape.mesh.scale.y,
+        scale_z: shape.mesh.scale.z,
+        color: shape.properties.color || '#ffffff',
+        geometry: shape.serializeGeometry(),
+        properties: shape.properties
+      };
+
+      socketManager.updateObject(shape.id, objectData);
+      console.log('📤 Broadcasted text edit:', shape.id, newText);
+    }
+
+    // Record in history for undo/redo
+    if (this.historyManager) {
+      // Create a simple update record for the text change
+      const selectedShapeIds = Array.from(this.shapeManager.selectedShapes);
+      this.historyHelper.beginUpdateCapture();
+
+      // The text change is already applied, so we just need to commit it
+      this.historyManager.commitUpdate(this.shapeManager, selectedShapeIds);
+      this.uiManager.updateUndoRedoButtonStates();
+    }
+  }
 
   undo() {
     this.historyHelper.undo();

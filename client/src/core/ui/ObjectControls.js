@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { TextEditor } from './TextEditor.js';
 
 /**
  * Floating controls that appear above selected objects
@@ -11,6 +12,8 @@ export class ObjectControls {
     this.container = null;
     this.buttons = new Map();
     this.isVisible = false;
+    this.textEditor = new TextEditor();
+    this.currentShape = null;
 
     this.init();
   }
@@ -58,11 +61,14 @@ export class ObjectControls {
   /**
    * Show controls above the selected object
    */
-  show(object) {
+  show(object, shape = null) {
     if (!this.container || !object) return;
 
     this.isVisible = true;
     this.container.style.display = 'flex';
+
+    // Store the shape for text editing (passed from App)
+    this.currentShape = shape;
 
     // Position controls above the object
     this.positionAboveObject(object);
@@ -158,6 +164,12 @@ export class ObjectControls {
    * Apply a modifier to the selected object
    */
   applyModifier(modifier) {
+    if (modifier === 'edit-text' && this.currentShape) {
+      // Handle text editing directly
+      this.textEditor.show(this.currentShape);
+      return;
+    }
+
     // Dispatch a custom event that the App can listen to
     const event = new CustomEvent('objectModifierAction', {
       detail: { modifier }
@@ -170,6 +182,15 @@ export class ObjectControls {
    */
   updateModifierStates(object) {
     if (!this.modifiersMenu || !object) return;
+
+    // Get the shape type from the object's userData
+    const shapeType = object.userData.shapeType || 'mesh';
+
+    // Show/hide text edit option based on shape type
+    const textEditItem = this.modifiersMenu.querySelector('[data-modifier="edit-text"]');
+    if (textEditItem) {
+      textEditItem.style.display = shapeType === 'text' ? 'flex' : 'none';
+    }
 
     // Check if the object has bevel enabled
     const hasBevel = object.userData.bevelEnabled || false;

@@ -12,8 +12,9 @@ export class Shape {
     this.properties = properties;
     this.selected = false;
 
-    // Store ID on mesh for reverse lookup
+    // Store ID and type on mesh for reverse lookup
     this.mesh.userData.shapeId = this.id;
+    this.mesh.userData.shapeType = this.type;
   }
 
   /**

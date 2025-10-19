@@ -64,6 +64,9 @@ export class ShapeManager {
         case 'circle':
           shape = this.factory.createCircle(x, z, id, props);
           break;
+        case 'text':
+          shape = this.factory.createText(x, y, z, id, props);
+          break;
         default:
           console.warn(`Unknown shape type: ${type}`);
           return null;
