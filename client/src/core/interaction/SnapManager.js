@@ -7,7 +7,7 @@ import * as THREE from 'three';
 export class SnapManager {
   constructor(shapeManager) {
     this.shapeManager = shapeManager;
-    this.enabled = false;
+    this.enabled = true;
     this.gridSize = 1.0; // Grid snapping increment
     this.snapDistance = 0.5; // Distance threshold for object snapping
   }

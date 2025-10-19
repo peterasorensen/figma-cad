@@ -1,3 +1,4 @@
+import * as THREE from 'three';
 import { socketManager } from '../network/SocketManager.js';
 
 /**
@@ -6,6 +7,9 @@ import { socketManager } from '../network/SocketManager.js';
 export class EventHandler {
   constructor(app) {
     this.app = app;
+    this.isSelecting = false;
+    this.selectionStart = null;
+    this.selectionRect = null;
     this.setupEventListeners();
   }
 
@@ -25,10 +29,23 @@ export class EventHandler {
     canvas.addEventListener('mousedown', (e) => {
       this.app.mouseDownPosition = { x: e.clientX, y: e.clientY };
       this.app.mouseDownTime = Date.now();
+
+      // Handle multi-select mode
+      if (this.app.currentTool === 'multiselect') {
+        this.startSelection(e);
+      }
     });
 
     canvas.addEventListener('click', (e) => {
       this.handleCanvasClick(e);
+    });
+
+    canvas.addEventListener('mousemove', (e) => {
+      this.handleCanvasMouseMove(e);
+    });
+
+    canvas.addEventListener('mouseup', (e) => {
+      this.handleCanvasMouseUp(e);
     });
 
     // Toolbar buttons
@@ -53,6 +70,8 @@ export class EventHandler {
       snapToggle.addEventListener('click', () => {
         this.toggleSnap();
       });
+      // Initialize button state to match SnapManager's default
+      snapToggle.classList.toggle('active', this.app.snapManager.isEnabled());
     }
 
     // Undo button
@@ -118,6 +137,9 @@ export class EventHandler {
     switch (e.key.toLowerCase()) {
       case 'v':
         this.handleToolClick('select');
+        break;
+      case 'm':
+        this.handleToolClick('multiselect');
         break;
       case 'b':
         this.handleToolClick('box');
@@ -236,10 +258,15 @@ export class EventHandler {
       }
     });
 
+    // If switching away from multiselect mode, clean up selection state
+    if (this.app.currentTool === 'multiselect' && tool !== 'multiselect') {
+      this.cleanupSelectionState();
+    }
+
     this.app.currentTool = tool;
 
     // If a shape tool is selected, create the shape at origin
-    if (tool !== 'select') {
+    if (tool !== 'select' && tool !== 'multiselect') {
       const shape = this.app.shapeManager.createShape(tool, { x: 0, y: 1, z: 0 });
       if (shape) {
         // Auto-select the new shape
@@ -268,7 +295,7 @@ export class EventHandler {
    * Handle canvas click for object selection
    */
   handleCanvasClick(event) {
-    // Only handle clicks in select mode
+    // Only handle clicks in select mode (not multiselect mode)
     if (this.app.currentTool !== 'select') return;
 
     // Don't handle clicks if we're dragging transform controls
@@ -515,5 +542,186 @@ export class EventHandler {
       // Show error notification
       this.app.uiManager.showNotification('Failed to create new canvas', 'error');
     }
+  }
+
+  /**
+   * Start selection rectangle for multi-select mode
+   */
+  startSelection(event) {
+    this.isSelecting = true;
+    this.selectionStart = { x: event.clientX, y: event.clientY };
+
+    // Disable orbit controls during multi-select
+    if (this.app.controls && this.app.controls.controls) {
+      this.app.controls.controls.enabled = false;
+    }
+
+    this.createSelectionRectangle();
+  }
+
+  /**
+   * Create visual selection rectangle
+   */
+  createSelectionRectangle() {
+    if (this.selectionRect) {
+      document.body.removeChild(this.selectionRect);
+    }
+
+    this.selectionRect = document.createElement('div');
+    this.selectionRect.style.position = 'absolute';
+    this.selectionRect.style.border = '2px dashed #5a8fd6';
+    this.selectionRect.style.backgroundColor = 'rgba(90, 143, 214, 0.1)';
+    this.selectionRect.style.pointerEvents = 'none';
+    this.selectionRect.style.zIndex = '1000';
+    document.body.appendChild(this.selectionRect);
+  }
+
+  /**
+   * Handle canvas mouse move for selection rectangle
+   */
+  handleCanvasMouseMove(event) {
+    if (!this.isSelecting || !this.selectionRect || this.app.currentTool !== 'multiselect') {
+      return;
+    }
+
+    const currentX = event.clientX;
+    const currentY = event.clientY;
+
+    const left = Math.min(this.selectionStart.x, currentX);
+    const top = Math.min(this.selectionStart.y, currentY);
+    const width = Math.abs(currentX - this.selectionStart.x);
+    const height = Math.abs(currentY - this.selectionStart.y);
+
+    this.selectionRect.style.left = left + 'px';
+    this.selectionRect.style.top = top + 'px';
+    this.selectionRect.style.width = width + 'px';
+    this.selectionRect.style.height = height + 'px';
+  }
+
+  /**
+   * Handle canvas mouse up to complete selection
+   */
+  handleCanvasMouseUp(event) {
+    if (!this.isSelecting || this.app.currentTool !== 'multiselect') {
+      return;
+    }
+
+    this.isSelecting = false;
+
+    const currentX = event.clientX;
+    const currentY = event.clientY;
+
+    // Calculate selection rectangle in screen coordinates
+    const left = Math.min(this.selectionStart.x, currentX);
+    const top = Math.min(this.selectionStart.y, currentY);
+    const right = Math.max(this.selectionStart.x, currentX);
+    const bottom = Math.max(this.selectionStart.y, currentY);
+
+    // Only proceed if there's a meaningful selection area
+    const minSelectionSize = 5;
+    if (right - left > minSelectionSize && bottom - top > minSelectionSize) {
+      this.selectShapesInRectangle(left, top, right, bottom);
+    }
+
+    // Clean up selection rectangle
+    if (this.selectionRect) {
+      document.body.removeChild(this.selectionRect);
+      this.selectionRect = null;
+    }
+
+    // Re-enable orbit controls
+    if (this.app.controls && this.app.controls.controls) {
+      this.app.controls.controls.enabled = true;
+    }
+  }
+
+  /**
+   * Clean up selection state when switching away from multiselect
+   */
+  cleanupSelectionState() {
+    this.isSelecting = false;
+
+    // Clean up selection rectangle if it exists
+    if (this.selectionRect) {
+      document.body.removeChild(this.selectionRect);
+      this.selectionRect = null;
+    }
+
+    // Re-enable orbit controls
+    if (this.app.controls && this.app.controls.controls) {
+      this.app.controls.controls.enabled = true;
+    }
+  }
+
+  /**
+   * Select shapes within the selection rectangle
+   */
+  selectShapesInRectangle(left, top, right, bottom) {
+    const canvas = this.app.scene.getRenderer().domElement;
+    const canvasRect = canvas.getBoundingClientRect();
+
+    // Convert screen coordinates to canvas-relative coordinates (0 to canvas width/height)
+    const canvasLeft = left - canvasRect.left;
+    const canvasTop = top - canvasRect.top;
+    const canvasRight = right - canvasRect.left;
+    const canvasBottom = bottom - canvasRect.top;
+
+    // Get all shapes and check which ones are within the selection rectangle
+    const shapes = this.app.shapeManager.getAllShapes();
+    const selectedShapes = [];
+
+    console.log(`Checking ${shapes.length} shapes for selection in rectangle: (${canvasLeft.toFixed(1)}, ${canvasTop.toFixed(1)}) to (${canvasRight.toFixed(1)}, ${canvasBottom.toFixed(1)})`);
+
+    shapes.forEach(shape => {
+      const mesh = shape.mesh;
+
+      // Get the world position of the mesh
+      const worldPosition = new THREE.Vector3();
+      mesh.getWorldPosition(worldPosition);
+
+      // Project to screen coordinates
+      const screenPos = worldPosition.clone();
+      screenPos.project(this.app.scene.getCamera());
+
+      // Convert NDC (-1 to 1) to canvas coordinates (0 to width/height)
+      const canvasX = (screenPos.x + 1) * canvasRect.width / 2;
+      const canvasY = (-screenPos.y + 1) * canvasRect.height / 2;
+
+      // Debug log for each shape
+      console.log(`Shape ${shape.id}: world(${worldPosition.x.toFixed(2)}, ${worldPosition.y.toFixed(2)}, ${worldPosition.z.toFixed(2)}) -> ndc(${screenPos.x.toFixed(3)}, ${screenPos.y.toFixed(3)}) -> canvas(${canvasX.toFixed(1)}, ${canvasY.toFixed(1)})`);
+
+      // Check if the shape is within the selection rectangle
+      if (canvasX >= canvasLeft && canvasX <= canvasRight &&
+          canvasY >= canvasTop && canvasY <= canvasBottom) {
+        selectedShapes.push(shape);
+        console.log(`✓ Selected shape ${shape.id} at canvas coords (${canvasX.toFixed(1)}, ${canvasY.toFixed(1)})`);
+      }
+    });
+
+    // Clear current selection and select the shapes within the rectangle
+    this.app.shapeManager.clearSelection();
+    selectedShapes.forEach(shape => {
+      this.app.shapeManager.selectShape(shape.id, true);
+    });
+
+    // Attach transform controls to the last selected shape (if any)
+    if (selectedShapes.length > 0) {
+      const lastShape = selectedShapes[selectedShapes.length - 1];
+      this.app.transform.attach(lastShape.mesh);
+
+      // Show object controls above the selected object
+      if (this.app.objectControls) {
+        this.app.objectControls.show(lastShape.mesh, lastShape);
+        this.app.objectControls.updateButtonStates(this.app.transform.getMode());
+      }
+    } else {
+      // No shapes selected, detach transform controls
+      this.app.transform.detach();
+      if (this.app.objectControls) {
+        this.app.objectControls.hide();
+      }
+    }
+
+    console.log(`Selected ${selectedShapes.length} shapes with rectangle selection`);
   }
 }
