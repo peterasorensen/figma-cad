@@ -83,6 +83,14 @@ export class EventHandler {
       });
     }
 
+    // New canvas button
+    const newCanvasButton = document.getElementById('new-canvas');
+    if (newCanvasButton) {
+      newCanvasButton.addEventListener('click', () => {
+        this.createNewCanvas();
+      });
+    }
+
     // Share canvas button
     const shareButton = document.getElementById('share-canvas');
     if (shareButton) {
@@ -480,5 +488,29 @@ export class EventHandler {
     }
 
     return false;
+  }
+
+  /**
+   * Create a new canvas and navigate to it
+   */
+  async createNewCanvas() {
+    try {
+      console.log('🎯 Creating new canvas from button click');
+
+      // Create a new canvas ID
+      const newCanvasId = await this.app.createNewCanvas();
+
+      // Create the new URL with the canvas ID
+      const newUrl = new URL(window.location.href);
+      newUrl.searchParams.set('canvas', newCanvasId);
+
+      // Navigate to the new canvas URL
+      window.location.href = newUrl.toString();
+
+    } catch (error) {
+      console.error('Error creating new canvas:', error);
+      // Show error notification
+      this.app.uiManager.showNotification('Failed to create new canvas', 'error');
+    }
   }
 }
