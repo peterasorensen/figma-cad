@@ -36,6 +36,7 @@ export class App {
     this.wasAuthenticated = false; // Track previous auth state
     this.onlineUsers = new Set(); // Track online users for presence display
     this.notifications = []; // Track active notifications
+    this.lastNotification = null; // For throttling duplicate notifications
     this.initialStateCaptured = false; // Flag to ensure initial state is only captured once
 
     this.init();
@@ -82,6 +83,10 @@ export class App {
     // Set up transform controls callbacks
     this.transform.setChangeCallback((object) => {
       this.handleObjectTransform(object);
+    });
+
+    this.transform.setDragStartCallback((object) => {
+      this.handleDragStart(object);
     });
 
     this.transform.setDragEndCallback((object) => {
@@ -476,11 +481,30 @@ export class App {
   }
 
   showNotification(message, type = 'info') {
+    // Simple throttling: prevent duplicate notifications within 2 seconds
+    const now = Date.now();
+    const duplicateKey = `${message}-${type}`;
+
+    // Check if we recently showed this exact notification
+    if (this.lastNotification && this.lastNotification.key === duplicateKey) {
+      const timeDiff = now - this.lastNotification.timestamp;
+      if (timeDiff < 2000) { // 2 second throttle
+        console.log('🔵 Throttling duplicate notification:', message);
+        return;
+      }
+    }
+
+    // Store this notification for throttling check
+    this.lastNotification = {
+      key: duplicateKey,
+      timestamp: now
+    };
+
     const notification = {
       id: Date.now() + Math.random(),
       message,
       type,
-      timestamp: Date.now()
+      timestamp: now
     };
 
     this.notifications.unshift(notification); // Add to beginning for stacking
@@ -605,12 +629,10 @@ export class App {
     if (data.objects) {
       data.objects.forEach(obj => this.handleObjectCreated(obj));
 
-      // Capture initial state after loading objects from server (only once per canvas)
-      if (this.historyManager && !this.initialStateCaptured) {
-        const selectedShapeIds = Array.from(this.shapeManager.selectedShapes);
-        this.historyManager.captureState(this.shapeManager, selectedShapeIds);
-        this.updateUndoRedoButtonStates();
+      // Mark initial state as captured (no longer need snapshots with delta-based system)
+      if (!this.initialStateCaptured) {
         this.initialStateCaptured = true;
+        this.updateUndoRedoButtonStates();
       }
     }
 
@@ -761,6 +783,12 @@ export class App {
       return;
     }
 
+    // Skip if this is the current user (they shouldn't remove their own cursor)
+    if (data.userId === auth.userId) {
+      console.log('🔵 Skipping user left for current user (should not remove own cursor)');
+      return;
+    }
+
     // Remove user from online users set
     this.onlineUsers.delete(data.userId);
 
@@ -876,6 +904,7 @@ export class App {
             rotation_x: object.rotation.x,
             rotation_y: object.rotation.y,
             rotation_z: object.rotation.z,
+            // Include scale for resize mode (visual feedback during drag)
             scale_x: object.scale.x,
             scale_y: object.scale.y,
             scale_z: object.scale.z
@@ -888,13 +917,68 @@ export class App {
     }
   }
 
+  handleDragStart(object) {
+    // Begin capturing state for undo functionality
+    if (this.historyManager) {
+      const selectedShapeIds = Array.from(this.shapeManager.selectedShapes);
+      this.historyManager.beginUpdate(this.shapeManager, selectedShapeIds);
+    }
+  }
+
   handleDragEnd(object) {
-        // Capture state when drag ends (for undo functionality)
+    // If we were in resize mode, bake the scale into geometry
+    if (this.transform && this.transform.getMode() === 'resize') {
+      const shape = this.shapeManager.findShapeByMesh(object);
+      if (shape) {
+        // Capture the scale delta BEFORE baking (for undo/redo)
+        const scaleDelta = {
+          x: object.scale.x,
+          y: object.scale.y,
+          z: object.scale.z
+        };
+
+        // Pass scale delta to history manager before baking
         if (this.historyManager) {
-          const selectedShapeIds = Array.from(this.shapeManager.selectedShapes);
-          this.historyManager.captureState(this.shapeManager, selectedShapeIds);
-          this.updateUndoRedoButtonStates();
+          this.historyManager.captureScaleDelta(shape.id, scaleDelta);
         }
+
+        // Bake the scale transform into the geometry
+        this.shapeManager.bakeShapeScale(shape.id);
+
+        // Broadcast the updated geometry to other users (after baking)
+        if (socketManager.isConnected && this.currentCanvasId) {
+          const objectData = {
+            id: shape.id,
+            position_x: object.position.x,
+            position_y: object.position.y,
+            position_z: object.position.z,
+            rotation_x: object.rotation.x,
+            rotation_y: object.rotation.y,
+            rotation_z: object.rotation.z,
+            // Reset scale to 1,1,1 after baking (scale is now baked into geometry)
+            scale_x: 1,
+            scale_y: 1,
+            scale_z: 1,
+            color: shape.properties.color || '#ffffff',
+            width: shape.properties.width || shape.properties.radius || 2,
+            height: shape.properties.height || 2,
+            depth: shape.properties.depth || 2,
+            // Serialize baked geometry for persistence
+            geometry: shape.serializeGeometry()
+          };
+
+          socketManager.updateObject(shape.id, objectData);
+          console.log('📤 Broadcasted resize with baked geometry:', shape.id);
+        }
+      }
+    }
+
+    // Commit the update operation for undo functionality
+    if (this.historyManager) {
+      const selectedShapeIds = Array.from(this.shapeManager.selectedShapes);
+      this.historyManager.commitUpdate(this.shapeManager, selectedShapeIds);
+      this.updateUndoRedoButtonStates();
+    }
   }
 
   setupEventListeners() {
@@ -1011,7 +1095,7 @@ export class App {
   }
 
   undo() {
-    if (this.historyManager && this.historyManager.undo(this.shapeManager)) {
+    if (this.historyManager && this.historyManager.undo(this.shapeManager, socketManager)) {
       // Detach transform controls during restoration
       this.transform.detach();
 
@@ -1048,7 +1132,7 @@ export class App {
   }
 
   redo() {
-    if (this.historyManager && this.historyManager.redo(this.shapeManager)) {
+    if (this.historyManager && this.historyManager.redo(this.shapeManager, socketManager)) {
       // Detach transform controls during restoration
       this.transform.detach();
 
@@ -1216,7 +1300,7 @@ export class App {
         // Capture state for undo functionality
         if (this.historyManager) {
           const selectedShapeIds = Array.from(this.shapeManager.selectedShapes);
-          this.historyManager.captureState(this.shapeManager, selectedShapeIds);
+          this.historyManager.pushCreate(shape, selectedShapeIds);
           this.updateUndoRedoButtonStates();
         }
 
@@ -1231,19 +1315,18 @@ export class App {
             rotation_x: shape.mesh.rotation.x,
             rotation_y: shape.mesh.rotation.y,
             rotation_z: shape.mesh.rotation.z,
-            scale_x: shape.mesh.scale.x,
-            scale_y: shape.mesh.scale.y,
-            scale_z: shape.mesh.scale.z,
-            color: shape.color || '#ffffff',
-            width: shape.width || 100,
-            height: shape.height || 100,
-            depth: shape.depth || 100,
+            color: shape.properties.color || '#ffffff',
+            width: shape.properties.width || shape.properties.radius || 2,
+            height: shape.properties.height || 2,
+            depth: shape.properties.depth || 2,
+            // Serialize full geometry for persistence
+            geometry: shape.serializeGeometry(),
             canvas_id: this.currentCanvasId,
             created_by: auth.userId
           };
 
           socketManager.createObject(objectData);
-          console.log('📤 Broadcasted object creation:', objectData.id);
+          console.log('📤 Broadcasted object creation with geometry:', objectData.id);
         }
       }
       // Switch back to select tool after creating
@@ -1294,9 +1377,9 @@ export class App {
         }
         break;
       case 'e':
-        // Set scale mode
+        // Set resize mode
         if (this.objectControls) {
-          this.objectControls.setMode('scale');
+          this.objectControls.setMode('resize');
         }
         break;
       case 'g':
@@ -1337,8 +1420,9 @@ export class App {
         if (this.shapeManager) {
           // Capture state before deletion for undo functionality
           if (this.historyManager) {
+            const deletedIds = Array.from(this.shapeManager.selectedShapes);
             const selectedShapeIds = Array.from(this.shapeManager.selectedShapes);
-            this.historyManager.captureState(this.shapeManager, selectedShapeIds);
+            this.historyManager.pushDelete(deletedIds, this.shapeManager, selectedShapeIds);
             this.updateUndoRedoButtonStates();
           }
 
@@ -1376,32 +1460,17 @@ export class App {
           e.preventDefault();
         }
         break;
-      case 'w':
-        // Move/translate mode
-        if (this.transform) {
-          this.transform.setMode('translate');
-          console.log('Transform mode: Move');
-        }
-        break;
-      case 'e':
-        // Rotate mode
-        if (this.transform) {
-          this.transform.setMode('rotate');
-          console.log('Transform mode: Rotate');
-        }
-        break;
-      case 't':
-        // Scale mode
-        if (this.transform) {
-          this.transform.setMode('scale');
-          console.log('Transform mode: Scale');
-        }
-        break;
       case ' ':
         // Space to cycle through transform modes
         if (this.transform && this.transform.isAttached()) {
           const newMode = this.transform.cycleMode();
           console.log(`Transform mode: ${newMode}`);
+
+          // Update ObjectControls button states to match
+          if (this.objectControls) {
+            this.objectControls.updateButtonStates(newMode);
+          }
+
           e.preventDefault();
         }
         break;

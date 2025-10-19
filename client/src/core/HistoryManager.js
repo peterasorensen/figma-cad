@@ -1,59 +1,175 @@
 /**
- * History manager for undo/redo functionality
- * Tracks scene state changes and allows restoration to previous states
+ * History manager for undo/redo functionality using delta-based actions
+ * Tracks per-action changes and applies inverse operations for undo/redo
  */
 export class HistoryManager {
   constructor() {
-    this.history = [];
+    this.actions = [];
     this.currentIndex = -1;
     this.maxHistorySize = 20;
     this.isRestoring = false; // Flag to prevent history tracking during restoration
+    this.pendingUpdate = null; // For capturing before/after during drag operations
   }
 
   /**
-   * Capture current scene state
+   * Begin capturing state for an update operation (drag start)
    */
-  captureState(shapeManager, selectedShapeIds = []) {
-    if (this.isRestoring) return;
+  beginUpdate(shapeManager, selectedShapeIds = []) {
+    if (this.isRestoring || this.pendingUpdate) return;
 
-    // Create a snapshot of the current scene state
-    const state = {
+    this.pendingUpdate = {
+      type: 'update',
       timestamp: Date.now(),
-      shapes: {},
+      shapes: [],
       selectedShapes: [...selectedShapeIds]
     };
 
-    // Capture all shape states
-    for (const [id, shape] of shapeManager.shapes) {
-      state.shapes[id] = {
-        id: shape.id,
-        type: shape.type,
-        position: { ...shape.getPosition() },
-        rotation: { ...shape.getRotation() },
-        scale: { ...shape.getScale() },
-        properties: { ...shape.properties },
-        selected: shape.selected
-      };
+    // Capture before state for all selected shapes
+    for (const id of selectedShapeIds) {
+      const shape = shapeManager.shapes.get(id);
+      if (shape) {
+        this.pendingUpdate.shapes.push({
+          id: shape.id,
+          type: shape.type,
+          before: {
+            position: { ...shape.getPosition() },
+            rotation: { ...shape.getRotation() },
+            properties: { ...shape.properties }
+          }
+          // Note: scaleDelta is added later in handleDragEnd() before baking
+        });
+      }
+    }
+  }
+
+  /**
+   * Commit an update operation (drag end)
+   */
+  commitUpdate(shapeManager, selectedShapeIds = []) {
+    if (this.isRestoring || !this.pendingUpdate) return;
+
+    // Capture after state for all affected shapes
+    for (const shapeData of this.pendingUpdate.shapes) {
+      const shape = shapeManager.shapes.get(shapeData.id);
+      if (shape) {
+        shapeData.after = {
+          position: { ...shape.getPosition() },
+          rotation: { ...shape.getRotation() },
+          properties: { ...shape.properties }
+        };
+      }
     }
 
-    // Add to history if this is a new state (not during restoration)
-    if (this.history.length === 0 ||
-        !this.statesEqual(this.history[this.currentIndex], state)) {
+    // Only add if there were actual changes
+    const hasChanges = this.pendingUpdate.shapes.some(shape =>
+      !this.positionsEqual(shape.before.position, shape.after.position) ||
+      !this.rotationsEqual(shape.before.rotation, shape.after.rotation) ||
+      !this.propertiesEqual(shape.before.properties, shape.after.properties) ||
+      shape.scaleDelta // If scaleDelta exists, it means a resize happened
+    );
 
-      // Remove any history after current index (when new action is performed)
-      if (this.currentIndex < this.history.length - 1) {
-        this.history = this.history.slice(0, this.currentIndex + 1);
+    if (hasChanges) {
+      this.pushAction(this.pendingUpdate);
+    }
+
+    this.pendingUpdate = null;
+  }
+
+  /**
+   * Capture scale delta for resize operations (before baking)
+   * Should be called before baking scale into geometry
+   */
+  captureScaleDelta(shapeId, scaleDelta) {
+    if (this.isRestoring || !this.pendingUpdate) return;
+
+    const shapeData = this.pendingUpdate.shapes.find(s => s.id === shapeId);
+    if (shapeData) {
+      shapeData.scaleDelta = scaleDelta;
+    }
+  }
+
+  /**
+   * Push a create action
+   * Captures full geometry snapshot for exact restoration
+   */
+  pushCreate(shape, selectedShapeIds = []) {
+    if (this.isRestoring) return;
+
+    console.log(`Pushing create action for shape ${shape.id} of type ${shape.type}`);
+    console.log(`Shape position:`, shape.getPosition());
+    console.log(`Shape properties:`, shape.properties);
+
+    const action = {
+      type: 'create',
+      timestamp: Date.now(),
+      shapes: [{
+        id: shape.id,
+        type: shape.type,
+        after: {
+          position: { ...shape.getPosition() },
+          rotation: { ...shape.getRotation() },
+          properties: { ...shape.properties },
+          geometry: shape.serializeGeometry() // Capture full geometry snapshot
+        }
+      }],
+      selectedShapes: [...selectedShapeIds]
+    };
+
+    console.log(`Created action:`, action);
+    this.pushAction(action);
+  }
+
+  /**
+   * Push a delete action
+   * Captures full geometry snapshot (tombstone) for exact restoration
+   */
+  pushDelete(shapeIds, shapeManager, selectedShapeIds = []) {
+    if (this.isRestoring) return;
+
+    const shapes = [];
+    for (const id of shapeIds) {
+      const shape = shapeManager.shapes.get(id);
+      if (shape) {
+        shapes.push({
+          id: shape.id,
+          type: shape.type,
+          before: {
+            position: { ...shape.getPosition() },
+            rotation: { ...shape.getRotation() },
+            properties: { ...shape.properties },
+            geometry: shape.serializeGeometry() // Capture full geometry snapshot
+          }
+        });
       }
+    }
 
-      // Add new state
-      this.history.push(state);
-      this.currentIndex++;
+    const action = {
+      type: 'delete',
+      timestamp: Date.now(),
+      shapes: shapes,
+      selectedShapes: [...selectedShapeIds]
+    };
 
-      // Limit history size
-      if (this.history.length > this.maxHistorySize) {
-        this.history.shift();
-        this.currentIndex--;
-      }
+    this.pushAction(action);
+  }
+
+  /**
+   * Push an action to history
+   */
+  pushAction(action) {
+    // Remove any actions after current index (when new action is performed)
+    if (this.currentIndex < this.actions.length - 1) {
+      this.actions = this.actions.slice(0, this.currentIndex + 1);
+    }
+
+    // Add new action
+    this.actions.push(action);
+    this.currentIndex++;
+
+    // Limit history size
+    if (this.actions.length > this.maxHistorySize) {
+      this.actions.shift();
+      this.currentIndex--;
     }
   }
 
@@ -88,8 +204,7 @@ export class HistoryManager {
 
       if (shape1.type !== shape2.type ||
           !this.positionsEqual(shape1.position, shape2.position) ||
-          !this.rotationsEqual(shape1.rotation, shape2.rotation) ||
-          !this.scalesEqual(shape1.scale, shape2.scale)) {
+          !this.rotationsEqual(shape1.rotation, shape2.rotation)) {
         return false;
       }
     }
@@ -125,20 +240,53 @@ export class HistoryManager {
   }
 
   /**
-   * Undo to previous state
+   * Check if two property objects are approximately equal
    */
-  undo(shapeManager) {
-    if (!this.canUndo()) return false;
+  propertiesEqual(props1, props2, tolerance = 0.01) {
+    if (!props1 || !props2) return false;
 
+    // Check all numeric properties (width, height, depth, radius)
+    const numericKeys = ['width', 'height', 'depth', 'radius'];
+    for (const key of numericKeys) {
+      const val1 = props1[key];
+      const val2 = props2[key];
+
+      // If both undefined, continue
+      if (val1 === undefined && val2 === undefined) continue;
+
+      // If one is defined and other isn't, they're different
+      if (val1 === undefined || val2 === undefined) return false;
+
+      // Compare numeric values with tolerance
+      if (Math.abs(val1 - val2) >= tolerance) return false;
+    }
+
+    // Check non-numeric properties (like color)
+    if (props1.color !== props2.color) return false;
+
+    return true;
+  }
+
+  /**
+   * Undo to previous action
+   */
+  undo(shapeManager, socketManager) {
+    if (!this.canUndo()) {
+      console.log(`Cannot undo: currentIndex=${this.currentIndex}, actions.length=${this.actions.length}`);
+      return false;
+    }
+
+    console.log(`Starting undo: currentIndex=${this.currentIndex}, actionType=${this.actions[this.currentIndex]?.type}`);
     this.isRestoring = true;
 
     try {
-      const previousState = this.history[this.currentIndex - 1];
+      const action = this.actions[this.currentIndex];
 
-      // Restore scene to previous state
-      this.restoreState(shapeManager, previousState);
+      // Apply inverse operation
+      this.applyInverse(shapeManager, action, socketManager);
 
       this.currentIndex--;
+      console.log(`Undo completed: new currentIndex=${this.currentIndex}`);
       return true;
     } finally {
       this.isRestoring = false;
@@ -149,31 +297,36 @@ export class HistoryManager {
    * Check if undo is possible
    */
   canUndo() {
-    return this.currentIndex > 0;
+    return this.currentIndex >= 0;
   }
 
   /**
    * Check if redo is possible
    */
   canRedo() {
-    return this.currentIndex < this.history.length - 1;
+    return this.currentIndex < this.actions.length - 1;
   }
 
   /**
-   * Redo to next state
+   * Redo to next action
    */
-  redo(shapeManager) {
-    if (!this.canRedo()) return false;
+  redo(shapeManager, socketManager) {
+    if (!this.canRedo()) {
+      console.log(`Cannot redo: currentIndex=${this.currentIndex}, actions.length=${this.actions.length}`);
+      return false;
+    }
 
+    console.log(`Starting redo: currentIndex=${this.currentIndex}, actionType=${this.actions[this.currentIndex + 1]?.type}`);
     this.isRestoring = true;
 
     try {
-      const nextState = this.history[this.currentIndex + 1];
+      const action = this.actions[this.currentIndex + 1];
 
-      // Restore scene to next state
-      this.restoreState(shapeManager, nextState);
+      // Apply forward operation
+      this.applyForward(shapeManager, action, socketManager);
 
       this.currentIndex++;
+      console.log(`Redo completed: new currentIndex=${this.currentIndex}`);
       return true;
     } finally {
       this.isRestoring = false;
@@ -181,54 +334,273 @@ export class HistoryManager {
   }
 
   /**
-   * Restore scene to a specific state
+   * Apply inverse operation for undo
    */
-  restoreState(shapeManager, state) {
-    // Clear current selection
-    shapeManager.clearSelection();
+  applyInverse(shapeManager, action, socketManager) {
+    switch (action.type) {
+      case 'update':
+        // For update actions, set shapes to their before state
+        for (const shapeData of action.shapes) {
+          const shape = shapeManager.shapes.get(shapeData.id);
+          if (shape) {
+            shape.setPosition(shapeData.before.position);
+            shape.setRotation(shapeData.before.rotation);
 
-    // Remove all existing shapes
-    for (const [id, shape] of shapeManager.shapes) {
-      shapeManager.scene.remove(shape.mesh);
-      shape.dispose();
-    }
-    shapeManager.shapes.clear();
+            // Apply inverse scale if this was a resize operation
+            if (shapeData.scaleDelta) {
+              const inverseScale = {
+                x: 1 / shapeData.scaleDelta.x,
+                y: 1 / shapeData.scaleDelta.y,
+                z: 1 / shapeData.scaleDelta.z
+              };
+              shape.mesh.scale.set(inverseScale.x, inverseScale.y, inverseScale.z);
+              // Bake the inverse scale into geometry
+              shapeManager.bakeShapeScale(shape.id);
+            }
 
-    // Restore shapes from state
-    for (const id in state.shapes) {
-      const shapeData = state.shapes[id];
+            shape.properties = { ...shapeData.before.properties };
 
-      // Create shape using factory
-      const shape = shapeManager.factory.createFromData(shapeData);
-
-      if (shape) {
-        shapeManager.shapes.set(shape.id, shape);
-        shapeManager.scene.add(shape.mesh);
-
-        // Restore selection state
-        if (shapeData.selected) {
-          shape.setSelected(true);
+            // Broadcast the inverse update to other users
+            if (socketManager && socketManager.isConnected) {
+              const updateData = {
+                position_x: shapeData.before.position.x,
+                position_y: shapeData.before.position.y,
+                position_z: shapeData.before.position.z,
+                rotation_x: shapeData.before.rotation.x,
+                rotation_y: shapeData.before.rotation.y,
+                rotation_z: shapeData.before.rotation.z,
+                // Reset scale to 1,1,1 (baked into geometry)
+                scale_x: 1,
+                scale_y: 1,
+                scale_z: 1,
+                // Broadcast final dimensions
+                width: shapeData.before.properties.width || shapeData.before.properties.radius || 2,
+                height: shapeData.before.properties.height || 2,
+                depth: shapeData.before.properties.depth || 2,
+                // Include serialized geometry if resize occurred
+                geometry: shapeData.scaleDelta ? shape.serializeGeometry() : undefined
+              };
+              socketManager.updateObject(shapeData.id, updateData);
+            }
+          }
         }
+        break;
+
+      case 'create':
+        // For create actions, delete the shapes (inverse of create)
+        for (const shapeData of action.shapes) {
+          console.log(`Undoing create for shape ${shapeData.id}`);
+          const shape = shapeManager.shapes.get(shapeData.id);
+          if (shape) {
+            console.log(`Found shape ${shapeData.id} in shapes map, removing from scene`);
+            if (shape.mesh.parent) {
+              shapeManager.scene.remove(shape.mesh);
+            }
+            shape.dispose();
+            shapeManager.shapes.delete(shapeData.id);
+            console.log(`Deleted shape ${shapeData.id} from shapes map`);
+
+            // Broadcast the inverse (delete) to other users
+            if (socketManager && socketManager.isConnected) {
+              console.log(`Broadcasting delete for shape ${shapeData.id}`);
+              socketManager.deleteObject(shapeData.id);
+            } else {
+              console.log(`Not connected to socket, skipping delete broadcast`);
+            }
+          } else {
+            console.warn(`Shape ${shapeData.id} not found in shapes map during undo`);
+          }
+        }
+        break;
+
+      case 'delete':
+        // For delete actions, recreate the shapes from geometry snapshot (inverse of delete)
+        for (const shapeData of action.shapes) {
+          // Use createShapeFromData which handles geometry restoration
+          const restoreData = {
+            id: shapeData.id,
+            type: shapeData.type,
+            position_x: shapeData.before.position.x,
+            position_y: shapeData.before.position.y,
+            position_z: shapeData.before.position.z,
+            rotation_x: shapeData.before.rotation.x,
+            rotation_y: shapeData.before.rotation.y,
+            rotation_z: shapeData.before.rotation.z,
+            color: shapeData.before.properties.color,
+            width: shapeData.before.properties.width || shapeData.before.properties.radius,
+            height: shapeData.before.properties.height,
+            depth: shapeData.before.properties.depth,
+            geometry: shapeData.before.geometry // Restore from tombstone
+          };
+
+          const shape = shapeManager.createShapeFromData(restoreData);
+          if (shape) {
+            // Ensure shape is added to scene
+            shapeManager.addShapeToScene(shape);
+
+            // Broadcast the inverse (create) to other users
+            if (socketManager && socketManager.isConnected) {
+              socketManager.createObject(restoreData);
+            }
+          }
+        }
+        break;
+    }
+
+    // Restore selection state
+    shapeManager.clearSelection();
+    for (const shapeId of action.selectedShapes) {
+      const shape = shapeManager.shapes.get(shapeId);
+      if (shape) {
+        shape.setSelected(true);
       }
     }
+    shapeManager.selectedShapes = new Set(action.selectedShapes);
+  }
 
-    // Restore selected shapes set
-    shapeManager.selectedShapes = new Set(state.selectedShapes);
+  /**
+   * Apply forward operation for redo
+   */
+  applyForward(shapeManager, action, socketManager) {
+    switch (action.type) {
+      case 'update':
+        // For update actions, set shapes to their after state
+        for (const shapeData of action.shapes) {
+          const shape = shapeManager.shapes.get(shapeData.id);
+          if (shape) {
+            shape.setPosition(shapeData.after.position);
+            shape.setRotation(shapeData.after.rotation);
+
+            // Apply forward scale if this was a resize operation
+            if (shapeData.scaleDelta) {
+              shape.mesh.scale.set(shapeData.scaleDelta.x, shapeData.scaleDelta.y, shapeData.scaleDelta.z);
+              // Bake the forward scale into geometry
+              shapeManager.bakeShapeScale(shape.id);
+            }
+
+            shape.properties = { ...shapeData.after.properties };
+
+            // Broadcast the forward update to other users
+            if (socketManager && socketManager.isConnected) {
+              const updateData = {
+                position_x: shapeData.after.position.x,
+                position_y: shapeData.after.position.y,
+                position_z: shapeData.after.position.z,
+                rotation_x: shapeData.after.rotation.x,
+                rotation_y: shapeData.after.rotation.y,
+                rotation_z: shapeData.after.rotation.z,
+                // Reset scale to 1,1,1 (baked into geometry)
+                scale_x: 1,
+                scale_y: 1,
+                scale_z: 1,
+                // Broadcast final dimensions
+                width: shapeData.after.properties.width || shapeData.after.properties.radius || 2,
+                height: shapeData.after.properties.height || 2,
+                depth: shapeData.after.properties.depth || 2,
+                // Include serialized geometry if resize occurred
+                geometry: shapeData.scaleDelta ? shape.serializeGeometry() : undefined
+              };
+              socketManager.updateObject(shapeData.id, updateData);
+            }
+          }
+        }
+        break;
+
+      case 'create':
+        // For create actions, recreate the shapes from geometry snapshot (forward of create)
+        for (const shapeData of action.shapes) {
+          // Remove any existing shape with the same ID first (cleanup)
+          if (shapeManager.shapes.has(shapeData.id)) {
+            const existingShape = shapeManager.shapes.get(shapeData.id);
+            if (existingShape.mesh.parent) {
+              shapeManager.scene.remove(existingShape.mesh);
+            }
+            existingShape.dispose();
+            shapeManager.shapes.delete(shapeData.id);
+            console.warn(`Removed existing shape ${shapeData.id} before recreating`);
+          }
+
+          console.log(`Recreating shape ${shapeData.id} of type ${shapeData.type} at position`, shapeData.after.position);
+
+          // Use createShapeFromData which handles geometry restoration
+          const restoreData = {
+            id: shapeData.id,
+            type: shapeData.type,
+            position_x: shapeData.after.position.x,
+            position_y: shapeData.after.position.y,
+            position_z: shapeData.after.position.z,
+            rotation_x: shapeData.after.rotation.x,
+            rotation_y: shapeData.after.rotation.y,
+            rotation_z: shapeData.after.rotation.z,
+            color: shapeData.after.properties.color,
+            width: shapeData.after.properties.width || shapeData.after.properties.radius,
+            height: shapeData.after.properties.height,
+            depth: shapeData.after.properties.depth,
+            geometry: shapeData.after.geometry // Restore from snapshot
+          };
+
+          const shape = shapeManager.createShapeFromData(restoreData);
+          if (shape) {
+            // Ensure shape is added to scene
+            shapeManager.addShapeToScene(shape);
+            console.log(`Successfully created shape ${shape.id}`);
+
+            // Broadcast the forward (create) to other users
+            if (socketManager && socketManager.isConnected) {
+              console.log(`Broadcasting create for shape ${shapeData.id}`);
+              socketManager.createObject(restoreData);
+            } else {
+              console.log(`Not connected to socket, skipping broadcast`);
+            }
+          } else {
+            console.error(`Failed to create shape ${shapeData.id}`);
+          }
+        }
+        break;
+
+      case 'delete':
+        // For delete actions, delete the shapes (forward of delete)
+        for (const shapeData of action.shapes) {
+          const shape = shapeManager.shapes.get(shapeData.id);
+          if (shape) {
+            shapeManager.scene.remove(shape.mesh);
+            shape.dispose();
+            shapeManager.shapes.delete(shapeData.id);
+
+            // Broadcast the forward (delete) to other users
+            if (socketManager && socketManager.isConnected) {
+              socketManager.deleteObject(shapeData.id);
+            }
+          }
+        }
+        break;
+    }
+
+    // Restore selection state
+    shapeManager.clearSelection();
+    for (const shapeId of action.selectedShapes) {
+      const shape = shapeManager.shapes.get(shapeId);
+      if (shape) {
+        shape.setSelected(true);
+      }
+    }
+    shapeManager.selectedShapes = new Set(action.selectedShapes);
   }
 
   /**
    * Clear all history
    */
   clear() {
-    this.history = [];
+    this.actions = [];
     this.currentIndex = -1;
+    this.pendingUpdate = null;
   }
 
   /**
    * Get current history size
    */
   getHistorySize() {
-    return this.history.length;
+    return this.actions.length;
   }
 
   /**

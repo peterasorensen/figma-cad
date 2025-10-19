@@ -16,29 +16,46 @@ export class ShapeManager {
 
   /**
    * Create a new shape and add to scene
+   * SINGLE SOURCE OF TRUTH for all shape creation
+   *
+   * @param {string} type - Shape type (box, sphere, cylinder, rectangle, circle)
+   * @param {object} position - {x, y, z} position
+   * @param {object} properties - {width, height, depth, radius, color} shape-specific properties
+   * @param {string} id - Optional shape ID (for deserialization/sync)
+   * @param {object} transform - Optional {rotation: {x,y,z}} for deserialization
    */
-  createShape(type, position = {}, properties = {}, id = null) {
+  createShape(type, position = {}, properties = {}, id = null, transform = null) {
     let shape;
 
     const x = position.x || 0;
     const y = position.y || 0;
     const z = position.z || 0;
 
+    // Ensure properties have defaults - spread first, then apply defaults only if missing
+    const props = {
+      ...properties,
+      width: properties.width !== undefined ? properties.width : 2,
+      height: properties.height !== undefined ? properties.height : 2,
+      depth: properties.depth !== undefined ? properties.depth : 2,
+      radius: properties.radius !== undefined ? properties.radius : 1,
+      color: properties.color !== undefined ? properties.color : this.factory.getNextColor()
+    };
+
     switch (type) {
       case 'box':
-        shape = this.factory.createBox(x, y, z, id);
+        shape = this.factory.createBox(x, y, z, id, props);
         break;
       case 'sphere':
-        shape = this.factory.createSphere(x, y, z, id);
+        shape = this.factory.createSphere(x, y, z, id, props);
         break;
       case 'cylinder':
-        shape = this.factory.createCylinder(x, y, z, id);
+        shape = this.factory.createCylinder(x, y, z, id, props);
         break;
       case 'rectangle':
-        shape = this.factory.createRectangle(x, z, id);
+        shape = this.factory.createRectangle(x, z, id, props);
         break;
       case 'circle':
-        shape = this.factory.createCircle(x, z, id);
+        shape = this.factory.createCircle(x, z, id, props);
         break;
       default:
         console.warn(`Unknown shape type: ${type}`);
@@ -46,6 +63,16 @@ export class ShapeManager {
     }
 
     if (shape) {
+      // Apply transform if provided (for deserialization)
+      if (transform && transform.rotation) {
+        shape.mesh.rotation.set(
+          transform.rotation.x || 0,
+          transform.rotation.y || 0,
+          transform.rotation.z || 0
+        );
+      }
+
+      // Manager handles scene and state (ONLY place this happens)
       this.shapes.set(shape.id, shape);
       this.scene.add(shape.mesh);
       console.log(`Created ${type} with id: ${shape.id}`);
@@ -198,11 +225,11 @@ export class ShapeManager {
    */
   importFromJSON(data) {
     data.forEach(shapeData => {
-      const shape = this.factory.createFromData(shapeData);
-      if (shape) {
-        this.shapes.set(shape.id, shape);
-        this.scene.add(shape.mesh);
-      }
+      const { type, position, rotation, properties, id } = shapeData;
+
+      const transform = rotation ? { rotation } : null;
+
+      this.createShape(type, position, properties, id, transform);
     });
   }
 
@@ -232,7 +259,86 @@ export class ShapeManager {
   }
 
   /**
+   * Bake the current scale transform into the geometry
+   * This applies the scale to vertices and resets the scale transform to 1,1,1
+   * Position and rotation are preserved
+   * Called after resize operations to make the scaled geometry permanent
+   *
+   * @param {string} shapeId - ID of the shape to bake
+   */
+  bakeShapeScale(shapeId) {
+    const shape = this.shapes.get(shapeId);
+    if (!shape || !shape.mesh) return;
+
+    // Store current position and rotation
+    const position = { ...shape.mesh.position };
+    const rotation = { ...shape.mesh.rotation };
+    const scale = { ...shape.mesh.scale };
+
+    // Only bake if scale is not already 1,1,1
+    if (Math.abs(scale.x - 1) < 0.001 && Math.abs(scale.y - 1) < 0.001 && Math.abs(scale.z - 1) < 0.001) {
+      return; // Nothing to bake
+    }
+
+    // Create a matrix with only scale (no position/rotation)
+    const scaleMatrix = new THREE.Matrix4().makeScale(scale.x, scale.y, scale.z);
+
+    // Apply the scale to the geometry vertices
+    shape.mesh.geometry.applyMatrix4(scaleMatrix);
+
+    // Reset scale to 1,1,1 (keep position and rotation as-is)
+    shape.mesh.scale.set(1, 1, 1);
+
+    // Update normals after geometry modification
+    shape.mesh.geometry.computeVertexNormals();
+
+    // Update the shape's internal properties to reflect the new baked dimensions
+    this.updateShapePropertiesFromScale(shape, scale);
+
+    console.log(`Baked scale for shape ${shapeId}`, scale);
+  }
+
+  /**
+   * Update shape properties based on the scale that was applied
+   * Called after baking scale to sync properties with actual geometry
+   */
+  updateShapePropertiesFromScale(shape, scale) {
+    switch (shape.type) {
+      case 'box':
+        shape.properties.width *= scale.x;
+        shape.properties.height *= scale.y;
+        shape.properties.depth *= scale.z;
+        break;
+
+      case 'sphere':
+        // For sphere, apply average scale (could be ellipsoid now)
+        const avgScale = (scale.x + scale.y + scale.z) / 3;
+        shape.properties.radius *= avgScale;
+        break;
+
+      case 'cylinder':
+        shape.properties.radius *= Math.max(scale.x, scale.z);
+        shape.properties.height *= scale.y;
+        break;
+
+      case 'rectangle':
+        shape.properties.width *= scale.x;
+        shape.properties.height *= scale.z;
+        break;
+
+      case 'circle':
+        const avgScaleXZ = (scale.x + scale.z) / 2;
+        shape.properties.radius *= avgScaleXZ;
+        break;
+    }
+
+    console.log(`Updated properties for ${shape.type}:`, shape.properties);
+  }
+
+  /**
    * Create shape from remote data (for synchronization)
+   * Uses the unified createShape() method
+   * If geometry data is present, applies it after creation
    */
   createShapeFromData(data) {
     try {
@@ -251,33 +357,41 @@ export class ShapeManager {
       switch (data.type) {
         case 'box':
         case 'rectangle':
-          properties.width = data.width || 100;
-          properties.height = data.height || 100;
-          properties.depth = data.depth || 100;
+          properties.width = data.width || 2;
+          properties.height = data.height || 2;
+          properties.depth = data.depth || 2;
           break;
         case 'sphere':
         case 'circle':
-          properties.radius = data.width || 100; // Use width as radius for spheres/circles
+          properties.radius = data.width || 1;
           break;
         case 'cylinder':
-          properties.radius = data.width || 100; // Use width as radius
-          properties.height = data.height || 100;
+          properties.radius = data.width || 1;
+          properties.height = data.height || 2;
           break;
       }
 
-      // Create shape with the correct ID from the start
-      const shape = this.createShape(data.type, position, properties, data.id);
+      // Build transform object (rotation only)
+      const transform = {
+        rotation: {
+          x: data.rotation_x || 0,
+          y: data.rotation_y || 0,
+          z: data.rotation_z || 0
+        }
+      };
+
+      // Use unified createShape method - SINGLE SOURCE OF TRUTH
+      const shape = this.createShape(data.type, position, properties, data.id, transform);
 
       if (shape) {
-        // Set additional properties
-        if (data.rotation_x !== undefined) shape.mesh.rotation.x = data.rotation_x;
-        if (data.rotation_y !== undefined) shape.mesh.rotation.y = data.rotation_y;
-        if (data.rotation_z !== undefined) shape.mesh.rotation.z = data.rotation_z;
-        if (data.scale_x !== undefined) shape.mesh.scale.x = data.scale_x;
-        if (data.scale_y !== undefined) shape.mesh.scale.y = data.scale_y;
-        if (data.scale_z !== undefined) shape.mesh.scale.z = data.scale_z;
-
-        console.log(`Created shape from remote data: ${data.id} (${data.type})`);
+        // If geometry data is present (from DB), apply it to replace default geometry
+        // This preserves baked scale and non-uniform transformations
+        if (data.geometry) {
+          shape.applySerializedGeometry(data.geometry);
+          console.log(`Created shape from remote data with custom geometry: ${data.id} (${data.type})`);
+        } else {
+          console.log(`Created shape from remote data with default geometry: ${data.id} (${data.type})`);
+        }
       }
 
       return shape;
@@ -331,6 +445,7 @@ export class ShapeManager {
         if (data.rotation_y !== undefined) existingShape.mesh.rotation.y = data.rotation_y;
         if (data.rotation_z !== undefined) existingShape.mesh.rotation.z = data.rotation_z;
 
+        // Update scale for resize mode (visual feedback during drag)
         if (data.scale_x !== undefined) existingShape.mesh.scale.x = data.scale_x;
         if (data.scale_y !== undefined) existingShape.mesh.scale.y = data.scale_y;
         if (data.scale_z !== undefined) existingShape.mesh.scale.z = data.scale_z;
@@ -346,6 +461,7 @@ export class ShapeManager {
         if (data.rotation_y !== undefined) existingShape.mesh.rotation.y = data.rotation_y;
         if (data.rotation_z !== undefined) existingShape.mesh.rotation.z = data.rotation_z;
 
+        // Update scale for resize mode (visual feedback during drag)
         if (data.scale_x !== undefined) existingShape.mesh.scale.x = data.scale_x;
         if (data.scale_y !== undefined) existingShape.mesh.scale.y = data.scale_y;
         if (data.scale_z !== undefined) existingShape.mesh.scale.z = data.scale_z;
@@ -353,6 +469,13 @@ export class ShapeManager {
         if (data.color && existingShape.mesh.material) {
           existingShape.mesh.material.color.setStyle(data.color);
         }
+      }
+
+      // If geometry data is present (e.g., after resize operation), apply it
+      // This preserves baked scale and non-uniform transformations
+      if (data.geometry) {
+        existingShape.applySerializedGeometry(data.geometry);
+        console.log(`Updated shape geometry from remote data: ${data.id}`);
       }
 
       console.log(`Updated shape from remote data: ${data.id}`);

@@ -2,7 +2,7 @@ import { TransformControls } from 'three/examples/jsm/controls/TransformControls
 
 /**
  * Transform controls for manipulating objects
- * Handles move, rotate, and scale operations
+ * Handles move, rotate, and resize operations
  */
 export class Transform {
   constructor(camera, domElement, orbitControls, snapManager = null) {
@@ -11,7 +11,7 @@ export class Transform {
     this.orbitControls = orbitControls;
     this.snapManager = snapManager;
     this.controls = null;
-    this.currentMode = 'translate'; // translate, rotate, scale
+    this.currentMode = 'translate'; // translate, rotate, resize
     this.attachedObject = null;
     this.isDragging = false;
 
@@ -28,6 +28,11 @@ export class Transform {
       if (this.orbitControls) {
         // OrbitControls uses 'enabled' property, not enable()/disable() methods
         this.orbitControls.enabled = !event.value;
+      }
+
+      // Handle drag start - capture baseline state when drag begins
+      if (event.value && this.attachedObject && this.onDragStart) {
+        this.onDragStart(this.attachedObject);
       }
 
       // Handle drag end - capture history state when drag finishes
@@ -70,7 +75,10 @@ export class Transform {
    */
   setMode(mode) {
     this.currentMode = mode;
-    this.controls.setMode(mode);
+    // For resize mode, use Three.js 'scale' mode visually
+    // We'll convert scale changes to geometry updates on drag end
+    const threeJsMode = mode === 'resize' ? 'scale' : mode;
+    this.controls.setMode(threeJsMode);
   }
 
   /**
@@ -81,10 +89,10 @@ export class Transform {
   }
 
   /**
-   * Toggle between translate, rotate, scale
+   * Toggle between translate, rotate, and resize
    */
   cycleMode() {
-    const modes = ['translate', 'rotate', 'scale'];
+    const modes = ['translate', 'rotate', 'resize'];
     const currentIndex = modes.indexOf(this.currentMode);
     const nextIndex = (currentIndex + 1) % modes.length;
     this.setMode(modes[nextIndex]);
@@ -117,6 +125,13 @@ export class Transform {
    */
   setChangeCallback(callback) {
     this.onObjectChange = callback;
+  }
+
+  /**
+   * Set callback for drag start events
+   */
+  setDragStartCallback(callback) {
+    this.onDragStart = callback;
   }
 
   /**
@@ -180,19 +195,21 @@ export class Transform {
         }
         break;
 
-      case 'scale':
+      case 'resize':
+        // For resize mode, we use scale visually during dragging
+        // The actual geometry will be rebuilt on drag end
         const currentScale = {
           x: this.attachedObject.scale.x,
           y: this.attachedObject.scale.y,
           z: this.attachedObject.scale.z
         };
 
-        // Apply snapping
+        // Apply snapping to scale (snap to increments like 0.1)
         const snappedScale = this.snapManager.snapScale(currentScale);
 
         // Only update if the scale actually changed (to avoid infinite loops)
         if (!this.scalesEqual(currentScale, snappedScale)) {
-          // Update the mesh scale directly
+          // Update the mesh scale directly for visual feedback
           this.attachedObject.scale.set(snappedScale.x, snappedScale.y, snappedScale.z);
 
           // Update the transform controls to reflect the snapped scale
@@ -200,6 +217,7 @@ export class Transform {
           needsUpdate = true;
         }
         break;
+
     }
 
     if (needsUpdate) {

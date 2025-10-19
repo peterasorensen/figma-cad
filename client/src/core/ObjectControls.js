@@ -2,7 +2,7 @@ import * as THREE from 'three';
 
 /**
  * Floating controls that appear above selected objects
- * Provides UI for switching between translate, rotate, and scale modes
+ * Provides UI for switching between translate, rotate, and resize modes
  */
 export class ObjectControls {
   constructor(camera, transformControls) {
@@ -30,7 +30,7 @@ export class ObjectControls {
   }
 
   setupButtons() {
-    const modes = ['translate', 'rotate', 'scale'];
+    const modes = ['translate', 'rotate', 'resize'];
     const actions = ['duplicate'];
 
     // Set up mode buttons
