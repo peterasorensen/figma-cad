@@ -40,6 +40,9 @@ export class ShapeManager {
       height: properties.height !== undefined ? properties.height : 2,
       depth: properties.depth !== undefined ? properties.depth : 2,
       radius: properties.radius !== undefined ? properties.radius : 1,
+      tube: properties.tube !== undefined ? properties.tube : 0.4,
+      tubularSegments: properties.tubularSegments !== undefined ? properties.tubularSegments : 20,
+      radialSegments: properties.radialSegments !== undefined ? properties.radialSegments : 8,
       color: properties.color !== undefined ? properties.color : this.factory.getNextColor()
     };
 
@@ -66,6 +69,27 @@ export class ShapeManager {
           break;
         case 'text':
           shape = this.factory.createText(x, y, z, id, props);
+          break;
+        case 'torus':
+          shape = this.factory.createTorus(x, y, z, id, props);
+          break;
+        case 'torusKnot':
+          shape = this.factory.createTorusKnot(x, y, z, id, props);
+          break;
+        case 'dodecahedron':
+          shape = this.factory.createDodecahedron(x, y, z, id, props);
+          break;
+        case 'icosahedron':
+          shape = this.factory.createIcosahedron(x, y, z, id, props);
+          break;
+        case 'octahedron':
+          shape = this.factory.createOctahedron(x, y, z, id, props);
+          break;
+        case 'tetrahedron':
+          shape = this.factory.createTetrahedron(x, y, z, id, props);
+          break;
+        case 'tube':
+          shape = this.factory.createTube(x, y, z, id, props);
           break;
         default:
           console.warn(`Unknown shape type: ${type}`);

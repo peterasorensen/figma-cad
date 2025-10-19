@@ -336,6 +336,46 @@
       transform: translateY(-200%) translateX(-20%);
     }
 
+    /* Complex Shapes Dropdown */
+    .complex-shapes-dropdown {
+      position: relative;
+    }
+
+    .complex-shapes-button {
+      position: relative;
+      width: 100%;
+    }
+
+    .complex-shapes-menu {
+      position: absolute;
+      top: 0;
+      left: 100%;
+      background: rgba(42, 42, 42, 0.95);
+      border: 1px solid #3a3a3a;
+      border-radius: 8px;
+      padding: 8px;
+      display: none;
+      z-index: 1001;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+      margin-left: 4px;
+      flex-direction: column;
+      gap: 4px;
+      min-width: 120px;
+    }
+
+    .complex-shapes-dropdown:hover .complex-shapes-menu {
+      display: flex;
+    }
+
+    .complex-shapes-menu .tool-button {
+      width: 100%;
+      text-align: left;
+      padding: 8px 12px;
+      font-size: 13px;
+      border-radius: 4px;
+      margin: 0;
+    }
+
     /* Modifiers dropdown */
     .modifiers-container {
       position: relative;
@@ -614,6 +654,19 @@
         <button class="tool-button tooltip" data-tool="rectangle" data-tooltip="Rectangle (R)">Rectangle</button>
         <button class="tool-button tooltip" data-tool="circle" data-tooltip="Circle (O)">Circle</button>
         <button class="tool-button tooltip" data-tool="text" data-tooltip="Text (T)">Text</button>
+
+        <div class="complex-shapes-dropdown">
+          <button class="tool-button tooltip complex-shapes-button" data-tooltip="Complex Shapes">Complex ▶</button>
+          <div class="complex-shapes-menu">
+            <button class="tool-button tooltip" data-tool="torus" data-tooltip="Torus">Torus</button>
+            <button class="tool-button tooltip" data-tool="torusKnot" data-tooltip="Torus Knot">Torus Knot</button>
+            <button class="tool-button tooltip" data-tool="dodecahedron" data-tooltip="Dodecahedron">Dodecahedron</button>
+            <button class="tool-button tooltip" data-tool="icosahedron" data-tooltip="Icosahedron">Icosahedron</button>
+            <button class="tool-button tooltip" data-tool="octahedron" data-tooltip="Octahedron">Octahedron</button>
+            <button class="tool-button tooltip" data-tool="tetrahedron" data-tooltip="Tetrahedron">Tetrahedron</button>
+            <button class="tool-button tooltip" data-tool="tube" data-tooltip="Tube">Tube</button>
+          </div>
+        </div>
 
         <hr>
 

@@ -191,4 +191,172 @@ export class ShapeFactory {
     });
   }
 
+  /**
+   * Create a 3D torus (donut shape)
+   */
+  createTorus(x = 0, y = 1, z = 0, id = null, properties = {}) {
+    const { radius, tube, color } = properties;
+    const geometry = new THREE.TorusGeometry(radius, tube, 16, 100);
+    const material = new THREE.MeshStandardMaterial({
+      color: color,
+      roughness: 0.5,
+      metalness: 0.3
+    });
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.position.set(x, y, z);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+
+    return new Shape('torus', mesh, {
+      radius,
+      tube,
+      color: '#' + material.color.getHexString()
+    }, id);
+  }
+
+  /**
+   * Create a 3D torus knot
+   */
+  createTorusKnot(x = 0, y = 1, z = 0, id = null, properties = {}) {
+    const { radius, tube, color } = properties;
+    const geometry = new THREE.TorusKnotGeometry(radius, tube, 100, 16);
+    const material = new THREE.MeshStandardMaterial({
+      color: color,
+      roughness: 0.5,
+      metalness: 0.3
+    });
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.position.set(x, y, z);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+
+    return new Shape('torusKnot', mesh, {
+      radius,
+      tube,
+      color: '#' + material.color.getHexString()
+    }, id);
+  }
+
+  /**
+   * Create a 3D dodecahedron
+   */
+  createDodecahedron(x = 0, y = 1, z = 0, id = null, properties = {}) {
+    const { radius, color } = properties;
+    const geometry = new THREE.DodecahedronGeometry(radius);
+    const material = new THREE.MeshStandardMaterial({
+      color: color,
+      roughness: 0.5,
+      metalness: 0.3
+    });
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.position.set(x, y, z);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+
+    return new Shape('dodecahedron', mesh, {
+      radius,
+      color: '#' + material.color.getHexString()
+    }, id);
+  }
+
+  /**
+   * Create a 3D icosahedron
+   */
+  createIcosahedron(x = 0, y = 1, z = 0, id = null, properties = {}) {
+    const { radius, color } = properties;
+    const geometry = new THREE.IcosahedronGeometry(radius);
+    const material = new THREE.MeshStandardMaterial({
+      color: color,
+      roughness: 0.5,
+      metalness: 0.3
+    });
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.position.set(x, y, z);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+
+    return new Shape('icosahedron', mesh, {
+      radius,
+      color: '#' + material.color.getHexString()
+    }, id);
+  }
+
+  /**
+   * Create a 3D octahedron
+   */
+  createOctahedron(x = 0, y = 1, z = 0, id = null, properties = {}) {
+    const { radius, color } = properties;
+    const geometry = new THREE.OctahedronGeometry(radius);
+    const material = new THREE.MeshStandardMaterial({
+      color: color,
+      roughness: 0.5,
+      metalness: 0.3
+    });
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.position.set(x, y, z);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+
+    return new Shape('octahedron', mesh, {
+      radius,
+      color: '#' + material.color.getHexString()
+    }, id);
+  }
+
+  /**
+   * Create a 3D tetrahedron
+   */
+  createTetrahedron(x = 0, y = 1, z = 0, id = null, properties = {}) {
+    const { radius, color } = properties;
+    const geometry = new THREE.TetrahedronGeometry(radius);
+    const material = new THREE.MeshStandardMaterial({
+      color: color,
+      roughness: 0.5,
+      metalness: 0.3
+    });
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.position.set(x, y, z);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+
+    return new Shape('tetrahedron', mesh, {
+      radius,
+      color: '#' + material.color.getHexString()
+    }, id);
+  }
+
+  /**
+   * Create a 3D tube following a path
+   */
+  createTube(x = 0, y = 1, z = 0, id = null, properties = {}) {
+    const { radius, tubularSegments, radialSegments, color } = properties;
+
+    // Create a simple curved path for the tube
+    const path = new THREE.CatmullRomCurve3([
+      new THREE.Vector3(0, 0, 0),
+      new THREE.Vector3(2, 1, 0),
+      new THREE.Vector3(4, 0, 0),
+      new THREE.Vector3(6, -1, 0),
+      new THREE.Vector3(8, 0, 0)
+    ]);
+
+    const geometry = new THREE.TubeGeometry(path, tubularSegments || 20, radius, radialSegments || 8, false);
+    const material = new THREE.MeshStandardMaterial({
+      color: color,
+      roughness: 0.5,
+      metalness: 0.3
+    });
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.position.set(x, y, z);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+
+    return new Shape('tube', mesh, {
+      radius,
+      tubularSegments: tubularSegments || 20,
+      radialSegments: radialSegments || 8,
+      color: '#' + material.color.getHexString()
+    }, id);
+  }
+
 }
