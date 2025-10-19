@@ -373,6 +373,55 @@
       display: none;
     }
 
+    /* Error screen */
+    #error-screen {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: #1a1a1a;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 10000;
+      flex-direction: column;
+    }
+
+    .error-content {
+      text-align: center;
+      color: #ffffff;
+      max-width: 400px;
+      padding: 20px;
+    }
+
+    .error-content h2 {
+      color: #ff6b6b;
+      margin-bottom: 16px;
+      font-size: 24px;
+    }
+
+    .error-content p {
+      margin-bottom: 24px;
+      color: #cccccc;
+      line-height: 1.5;
+    }
+
+    .error-button {
+      background: #5a8fd6;
+      border: none;
+      padding: 12px 24px;
+      border-radius: 6px;
+      color: #ffffff;
+      font-size: 16px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .error-button:hover {
+      background: #4a7bc6;
+    }
+
     .spinner {
       border: 3px solid #3a3a3a;
       border-top: 3px solid #5a8fd6;
@@ -392,6 +441,14 @@
   <div id="app">
     <div id="loading">
       <div class="spinner"></div>
+    </div>
+
+    <div id="error-screen">
+      <div class="error-content">
+        <h2>Canvas Not Found</h2>
+        <p>The canvas you're trying to access doesn't exist or has been deleted.</p>
+        <button id="create-new-canvas" class="error-button">Create New Canvas</button>
+      </div>
     </div>
 
     <div id="header">

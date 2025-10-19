@@ -43,6 +43,12 @@ export class SocketEventHandler {
 
     socketManager.onError((error) => {
       console.error('Socket error:', error);
+
+      // Handle canvas not found error
+      if (error.message === 'Canvas not found') {
+        console.log('Canvas not found, showing error screen...');
+        this.app.uiManager.showCanvasNotFoundError();
+      }
     });
   }
 

@@ -93,6 +93,21 @@ io.on('connection', (socket) => {
       }
       canvasRooms.get(canvasId).add(socket.id)
 
+      // Validate that canvas exists before proceeding
+      const { data: canvasCheck, error: canvasError } = await supabase
+        .from('canvases')
+        .select('id')
+        .eq('id', canvasId)
+        .single()
+
+      if (canvasError || !canvasCheck) {
+        console.log(`❌ Canvas ${canvasId} does not exist, rejecting join`)
+        socket.emit('error', { message: 'Canvas not found' })
+        return
+      }
+
+      console.log(`📊 Canvas ${canvasId} exists:`, !!canvasCheck)
+
       // Load canvas state
       const { data: objects } = await supabase
         .from('objects')
@@ -146,17 +161,6 @@ io.on('connection', (socket) => {
         canvasIdType: typeof canvasId,
         canvasIdValue: canvasId
       })
-
-      // If no sessions found, check if the canvas exists
-      if (!sessions || sessions.length === 0) {
-        const { data: canvasCheck } = await supabase
-          .from('canvases')
-          .select('id')
-          .eq('id', canvasId)
-          .single()
-
-        console.log(`📊 Canvas ${canvasId} exists:`, !!canvasCheck)
-      }
 
       // Send current state to user (includes all sessions)
       socket.emit('canvas-state', {

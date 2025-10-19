@@ -226,6 +226,59 @@ export class UIManager {
   }
 
   /**
+   * Show canvas not found error screen
+   */
+  showCanvasNotFoundError() {
+    const errorScreen = document.getElementById('error-screen');
+    const createButton = document.getElementById('create-new-canvas');
+
+    if (errorScreen) {
+      errorScreen.style.display = 'flex';
+    }
+
+    if (createButton) {
+      createButton.addEventListener('click', () => {
+        this.createNewCanvasFromError();
+      });
+    }
+  }
+
+  /**
+   * Hide error screen
+   */
+  hideErrorScreen() {
+    const errorScreen = document.getElementById('error-screen');
+    if (errorScreen) {
+      errorScreen.style.display = 'none';
+    }
+  }
+
+  /**
+   * Create new canvas from error screen
+   */
+  async createNewCanvasFromError() {
+    try {
+      this.hideErrorScreen();
+
+      // Create a new canvas
+      const newCanvasId = await this.app.createNewCanvas();
+
+      // Create the new URL with the canvas ID
+      const newUrl = new URL(window.location.href);
+      newUrl.searchParams.set('canvas', newCanvasId);
+
+      // Navigate to the new canvas URL
+      window.location.href = newUrl.toString();
+
+    } catch (error) {
+      console.error('Failed to create new canvas from error:', error);
+      this.showNotification('Failed to create new canvas', 'error');
+      // Show error screen again if creation failed
+      this.showCanvasNotFoundError();
+    }
+  }
+
+  /**
    * Share canvas
    */
   shareCanvas() {
