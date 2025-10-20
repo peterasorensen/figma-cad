@@ -32,6 +32,7 @@ export class App {
     this.transform = null;
     this.shapeManager = null;
     this.authModal = null;
+    this.booleanManager = null;
     this.cursorManager = null;
     this.uiManager = null;
     this.socketEventHandler = null;
@@ -80,10 +81,11 @@ export class App {
     this.uiManager = new UIManager(this);
     this.historyHelper = new HistoryHelper(this);
 
-    // Import SnapManager, ObjectControls, and HistoryManager
+    // Import SnapManager, ObjectControls, HistoryManager, and BooleanManager
     const { SnapManager } = await import('./core/interaction/SnapManager.js');
     const { ObjectControls } = await import('./core/ui/ObjectControls.js');
     const { HistoryManager } = await import('./core/history/HistoryManager.js');
+    const { BooleanManager } = await import('./core/interaction/BooleanManager.js');
     this.snapManager = new SnapManager(this.shapeManager);
     this.transform = new Transform(
       this.scene.getCamera(),
@@ -95,6 +97,7 @@ export class App {
     this.transform.app = this;
     this.objectControls = new ObjectControls(this.scene.getCamera(), this.transform);
     this.historyManager = new HistoryManager();
+    this.booleanManager = new BooleanManager(this);
     this.cursorManager = new CursorManager(this.scene, this.scene.getCamera());
 
     // Initialize remaining helper classes

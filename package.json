@@ -10,16 +10,23 @@
     "build": "vite build",
     "preview": "vite preview"
   },
-  "keywords": ["collaboration", "3d", "design", "threejs", "real-time"],
+  "keywords": [
+    "collaboration",
+    "3d",
+    "design",
+    "threejs",
+    "real-time"
+  ],
   "author": "",
   "license": "MIT",
   "dependencies": {
-    "three": "^0.170.0",
+    "@supabase/supabase-js": "^2.47.10",
     "socket.io-client": "^4.8.1",
-    "@supabase/supabase-js": "^2.47.10"
+    "three": "^0.170.0",
+    "three-csg-ts": "^3.2.0"
   },
   "devDependencies": {
-    "vite": "^6.0.3",
-    "concurrently": "^9.1.2"
+    "concurrently": "^9.1.2",
+    "vite": "^6.0.3"
   }
 }

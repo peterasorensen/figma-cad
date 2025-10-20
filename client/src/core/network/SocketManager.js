@@ -41,6 +41,14 @@ export class SocketManager {
       this.isConnected = false
     })
 
+    this.socket.on('connect_error', (error) => {
+      console.error('Socket connection error:', error)
+    })
+
+    this.socket.on('error', (error) => {
+      console.error('Socket error:', error)
+    })
+
     this.socket.on('reconnect', (attemptNumber) => {
       console.log(`Reconnected after ${attemptNumber} attempts`)
       this.reconnectAttempts = attemptNumber

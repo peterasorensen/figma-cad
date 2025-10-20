@@ -93,7 +93,8 @@ export class ShapeFactory {
    */
   createSphere(x = 0, y = 1, z = 0, id = null, properties = {}) {
     const { radius, color } = properties;
-    const geometry = new THREE.SphereGeometry(radius, 32, 32);
+    // Aggressive reduction for boolean performance (was 32x32, now 8x8)
+    const geometry = new THREE.SphereGeometry(radius, 8, 8);
     const material = new THREE.MeshStandardMaterial({
       color: color,
       roughness: 0.5,
@@ -115,7 +116,8 @@ export class ShapeFactory {
    */
   createCylinder(x = 0, y = 1, z = 0, id = null, properties = {}) {
     const { radius, height, color } = properties;
-    const geometry = new THREE.CylinderGeometry(radius, radius, height, 32);
+    // Aggressive reduction for boolean performance (was 32, now 8)
+    const geometry = new THREE.CylinderGeometry(radius, radius, height, 8);
     const material = new THREE.MeshStandardMaterial({
       color: color,
       roughness: 0.5,
@@ -161,7 +163,8 @@ export class ShapeFactory {
    */
   createCircle(x = 0, z = 0, id = null, properties = {}) {
     const { radius, color } = properties;
-    const geometry = new THREE.CylinderGeometry(radius, radius, 0.1, 32);
+    // Aggressive reduction for boolean performance (was 32, now 12)
+    const geometry = new THREE.CylinderGeometry(radius, radius, 0.1, 12);
     const material = new THREE.MeshStandardMaterial({
       color: color,
       roughness: 0.5,
@@ -196,7 +199,8 @@ export class ShapeFactory {
    */
   createTorus(x = 0, y = 1, z = 0, id = null, properties = {}) {
     const { radius, tube, color } = properties;
-    const geometry = new THREE.TorusGeometry(radius, tube, 16, 100);
+    // Aggressive reduction for boolean performance (was 16 radial/100 tubular, now 8/32)
+    const geometry = new THREE.TorusGeometry(radius, tube, 8, 32);
     const material = new THREE.MeshStandardMaterial({
       color: color,
       roughness: 0.5,
@@ -219,7 +223,8 @@ export class ShapeFactory {
    */
   createTorusKnot(x = 0, y = 1, z = 0, id = null, properties = {}) {
     const { radius, tube, color } = properties;
-    const geometry = new THREE.TorusKnotGeometry(radius, tube, 100, 16);
+    // Aggressive reduction for boolean performance (was 100 tubular/16 radial, now 32/8)
+    const geometry = new THREE.TorusKnotGeometry(radius, tube, 32, 8);
     const material = new THREE.MeshStandardMaterial({
       color: color,
       roughness: 0.5,
@@ -340,7 +345,8 @@ export class ShapeFactory {
       new THREE.Vector3(8, 0, 0)
     ]);
 
-    const geometry = new THREE.TubeGeometry(path, tubularSegments || 20, radius, radialSegments || 8, false);
+    // Aggressive reduction for boolean performance (was 20 tubular/8 radial, now 12/6)
+    const geometry = new THREE.TubeGeometry(path, tubularSegments || 12, radius, radialSegments || 6, false);
     const material = new THREE.MeshStandardMaterial({
       color: color,
       roughness: 0.5,

@@ -338,6 +338,52 @@ export class HistoryManager {
    */
   applyInverse(shapeManager, action, socketManager) {
     switch (action.type) {
+      case 'boolean':
+        // For boolean operations, undo by:
+        // 1. Restoring the target shape to its before geometry
+        // 2. Recreating the cutting shape
+        console.log(`Undoing boolean operation on target shape ${action.targetShape.id}`);
+
+        // Restore target shape geometry
+        const targetShape = shapeManager.shapes.get(action.targetShape.id);
+        if (targetShape) {
+          targetShape.applySerializedGeometry(action.targetShape.beforeGeometry);
+
+          // Broadcast the geometry restoration
+          if (socketManager && socketManager.isConnected) {
+            const updateData = {
+              id: action.targetShape.id,
+              geometry: action.targetShape.beforeGeometry
+            };
+            socketManager.updateObject(action.targetShape.id, updateData);
+          }
+        }
+
+        // Recreate the cutting shape
+        const cuttingRestoreData = {
+          id: action.cuttingShape.id,
+          type: action.cuttingShape.type,
+          position_x: action.cuttingShape.position.x,
+          position_y: action.cuttingShape.position.y,
+          position_z: action.cuttingShape.position.z,
+          rotation_x: action.cuttingShape.rotation.x,
+          rotation_y: action.cuttingShape.rotation.y,
+          rotation_z: action.cuttingShape.rotation.z,
+          color: action.cuttingShape.properties.color,
+          geometry: action.cuttingShape.beforeGeometry
+        };
+
+        const cuttingShape = shapeManager.createShapeFromData(cuttingRestoreData);
+        if (cuttingShape) {
+          shapeManager.addShapeToScene(cuttingShape);
+
+          // Broadcast the cutting shape recreation
+          if (socketManager && socketManager.isConnected) {
+            socketManager.createObject(cuttingRestoreData);
+          }
+        }
+        break;
+
       case 'update':
         // For update actions, set shapes to their before state
         for (const shapeData of action.shapes) {
@@ -463,6 +509,41 @@ export class HistoryManager {
    */
   applyForward(shapeManager, action, socketManager) {
     switch (action.type) {
+      case 'boolean':
+        // For boolean operations, redo by:
+        // 1. Applying the after geometry to the target shape
+        // 2. Deleting the cutting shape
+        console.log(`Redoing boolean operation on target shape ${action.targetShape.id}`);
+
+        // Apply after geometry to target shape
+        const targetShape = shapeManager.shapes.get(action.targetShape.id);
+        if (targetShape) {
+          targetShape.applySerializedGeometry(action.targetShape.afterGeometry);
+
+          // Broadcast the geometry update
+          if (socketManager && socketManager.isConnected) {
+            const updateData = {
+              id: action.targetShape.id,
+              geometry: action.targetShape.afterGeometry
+            };
+            socketManager.updateObject(action.targetShape.id, updateData);
+          }
+        }
+
+        // Delete the cutting shape (if it exists)
+        const cuttingShape = shapeManager.shapes.get(action.cuttingShape.id);
+        if (cuttingShape) {
+          shapeManager.scene.remove(cuttingShape.mesh);
+          cuttingShape.dispose();
+          shapeManager.shapes.delete(action.cuttingShape.id);
+
+          // Broadcast the deletion
+          if (socketManager && socketManager.isConnected) {
+            socketManager.deleteObject(action.cuttingShape.id);
+          }
+        }
+        break;
+
       case 'update':
         // For update actions, set shapes to their after state
         for (const shapeData of action.shapes) {

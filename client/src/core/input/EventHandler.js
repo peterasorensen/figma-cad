@@ -126,6 +126,14 @@ export class EventHandler {
       });
     }
 
+    // Apply boolean button
+    const applyBooleanButton = document.getElementById('apply-boolean');
+    if (applyBooleanButton) {
+      applyBooleanButton.addEventListener('click', () => {
+        this.handleApplyBoolean();
+      });
+    }
+
     // Object control actions
     document.addEventListener('objectControlAction', (e) => {
       const { action } = e.detail;
@@ -171,6 +179,9 @@ export class EventHandler {
       case 't':
         this.handleToolClick('text');
         break;
+      case 'u':
+        this.handleToolClick('boolean-subtract');
+        break;
       case 'q':
         // Set translate mode
         if (this.app.objectControls) {
@@ -210,6 +221,15 @@ export class EventHandler {
         }
         break;
       case 'escape':
+        // Cancel boolean operation if active
+        if (this.app.booleanManager && this.app.booleanManager.isActive()) {
+          this.app.booleanManager.cancelOperation();
+          this.hideApplyButton();
+          this.handleToolClick('select');
+          this.app.uiManager.showNotification('Boolean operation cancelled', 'info');
+          break;
+        }
+
         // Deselect all
         if (this.app.shapeManager) {
           this.app.shapeManager.clearSelection();
@@ -219,6 +239,12 @@ export class EventHandler {
         }
         if (this.app.objectControls) {
           this.app.objectControls.hide();
+        }
+        break;
+      case 'enter':
+        // Apply boolean operation if in boolean mode
+        if (this.app.booleanManager && this.app.booleanManager.isActive()) {
+          this.handleApplyBoolean();
         }
         break;
       case 'delete':
@@ -271,7 +297,19 @@ export class EventHandler {
       this.cleanupSelectionState();
     }
 
+    // If switching away from boolean mode, cancel the boolean operation
+    if (this.app.booleanManager && this.app.booleanManager.isActive() && tool !== 'boolean-subtract') {
+      this.app.booleanManager.cancelOperation();
+      this.hideApplyButton();
+    }
+
     this.app.currentTool = tool;
+
+    // Handle boolean subtract tool
+    if (tool === 'boolean-subtract') {
+      this.handleBooleanSubtractTool();
+      return;
+    }
 
     // If a shape tool is selected, create the shape at origin
     if (tool !== 'select' && tool !== 'multiselect') {
@@ -769,5 +807,226 @@ export class EventHandler {
     }
 
     console.log(`Selected ${selectedShapes.length} shapes with rectangle selection`);
+  }
+
+  /**
+   * Handle boolean subtract tool selection
+   */
+  handleBooleanSubtractTool() {
+    // Get the currently selected shape
+    const selectedShapes = this.app.shapeManager.getSelectedShapes();
+
+    if (selectedShapes.length !== 1) {
+      this.app.uiManager.showNotification('Select exactly one shape to use as cutting tool', 'warning');
+      // Switch back to select tool
+      setTimeout(() => this.handleToolClick('select'), 100);
+      return;
+    }
+
+    const cuttingShape = selectedShapes[0];
+
+    // Start boolean subtract mode
+    this.app.booleanManager.startSubtractMode(cuttingShape);
+
+    // Show the apply button
+    this.showApplyButton();
+
+    this.app.uiManager.showNotification('Position the cutting object and press Apply or Enter', 'info');
+  }
+
+  /**
+   * Handle apply boolean operation
+   */
+  handleApplyBoolean() {
+    if (!this.app.booleanManager.isActive()) {
+      return;
+    }
+
+    // Find overlapping shapes
+    const overlappingShapes = this.app.booleanManager.findOverlappingShapes();
+
+    if (overlappingShapes.length === 0) {
+      this.app.uiManager.showNotification('No overlapping shapes found', 'warning');
+      return;
+    }
+
+    // For now, apply to the first overlapping shape
+    // TODO: In the future, could show a selection dialog for multiple overlaps
+    const targetShape = overlappingShapes[0];
+    const cuttingShape = this.app.booleanManager.getCuttingObject();
+
+    // Store geometry snapshots before the operation
+    const targetBeforeGeometry = targetShape.serializeGeometry();
+    const cuttingBeforeGeometry = cuttingShape.serializeGeometry();
+
+    // Apply the boolean operation
+    const success = this.app.booleanManager.applySubtract(targetShape);
+
+    if (success) {
+      // Commit the history update (this will capture the after state)
+      if (this.app.historyManager) {
+        // For boolean operations, we need special handling since the cutting object is deleted
+        // We'll manually create a boolean action instead of using the standard update flow
+        this.app.historyManager.pendingUpdate = null; // Cancel the pending update
+
+        // Create a custom boolean action
+        const booleanAction = {
+          type: 'boolean',
+          timestamp: Date.now(),
+          targetShape: {
+            id: targetShape.id,
+            type: targetShape.type,
+            beforeGeometry: targetBeforeGeometry, // Store the geometry before the boolean operation
+            afterGeometry: targetShape.serializeGeometry() // Store the geometry after the boolean operation
+          },
+          cuttingShape: {
+            id: cuttingShape.id,
+            type: cuttingShape.type,
+            beforeGeometry: cuttingBeforeGeometry, // Store the cutting geometry for redo
+            position: { ...cuttingShape.getPosition() },
+            rotation: { ...cuttingShape.getRotation() },
+            properties: { ...cuttingShape.properties }
+          },
+          selectedShapes: [targetShape.id] // Restore selection to target shape after undo/redo
+        };
+
+        this.app.historyManager.pushAction(booleanAction);
+        this.app.uiManager.updateUndoRedoButtonStates();
+      }
+
+      // Broadcast the geometry change to other users
+      if (this.app.socketManager && this.app.socketManager.isConnected && this.app.currentCanvasId) {
+        try {
+          // Broadcast the updated target shape geometry
+          const geometryData = targetShape.serializeGeometry();
+          if (!geometryData) {
+            console.error('Failed to serialize geometry for shape:', targetShape.id);
+            this.app.uiManager.showNotification('Failed to sync geometry changes', 'error');
+            return;
+          }
+
+          // Validate geometry data before sending
+          let geometrySize;
+          try {
+            const geometryString = JSON.stringify(geometryData);
+            geometrySize = geometryString.length;
+
+            // Pretty print size
+            let sizeDisplay;
+            if (geometrySize >= 1024 * 1024) {
+              sizeDisplay = `${(geometrySize / (1024 * 1024)).toFixed(2)} MB`;
+            } else if (geometrySize >= 1024) {
+              sizeDisplay = `${(geometrySize / 1024).toFixed(2)} KB`;
+            } else {
+              sizeDisplay = `${geometrySize} bytes`;
+            }
+
+            console.log(`📊 Boolean geometry saved - Size: ${sizeDisplay} (${geometrySize} bytes)`);
+            console.log('Geometry attributes:', Object.keys(geometryData.attributes));
+            console.log('Position count:', geometryData.attributes.position?.array.length || 0);
+            console.log('Sample position data:', geometryData.attributes.position?.array.slice(0, 9)); // First 3 vertices
+          } catch (serializeError) {
+            console.error('Failed to serialize geometry data:', serializeError);
+            this.app.uiManager.showNotification('Geometry data corrupted', 'error');
+            return;
+          }
+
+          // Check data size limit (prevent huge geometries from breaking socket)
+          const MAX_GEOMETRY_SIZE = 1024 * 1024; // 1MB limit
+          if (geometrySize > MAX_GEOMETRY_SIZE) {
+            console.error('Geometry data too large:', geometrySize, 'bytes (max:', MAX_GEOMETRY_SIZE, ')');
+            this.app.uiManager.showNotification('Boolean result too complex - try simpler shapes', 'error');
+
+            // Revert the boolean operation since we can't sync it
+            if (targetShape && cuttingShape) {
+              // Restore target shape geometry
+              targetShape.applySerializedGeometry(targetBeforeGeometry);
+              // Note: cutting shape is already removed, user will need to recreate it
+              this.app.uiManager.showNotification('Boolean operation reverted - shape too complex', 'warning');
+            }
+            return;
+          }
+
+          // Check for invalid values
+          if (geometryData.attributes.position?.array.some(val => !isFinite(val))) {
+            console.error('Invalid position values detected in geometry!');
+            this.app.uiManager.showNotification('Invalid geometry data generated', 'error');
+            return;
+          }
+
+          const targetObjectData = {
+            id: targetShape.id,
+            position_x: targetShape.mesh.position.x,
+            position_y: targetShape.mesh.position.y,
+            position_z: targetShape.mesh.position.z,
+            rotation_x: targetShape.mesh.rotation.x,
+            rotation_y: targetShape.mesh.rotation.y,
+            rotation_z: targetShape.mesh.rotation.z,
+            scale_x: targetShape.mesh.scale.x,
+            scale_y: targetShape.mesh.scale.y,
+            scale_z: targetShape.mesh.scale.z,
+            color: targetShape.properties.color || '#ffffff',
+            geometry: geometryData // Updated geometry after boolean operation
+          };
+
+          console.log('Broadcasting boolean operation result for shape:', targetShape.id);
+          console.log('Socket connected:', this.app.socketManager.isConnected);
+
+          // Small delay to ensure operation is fully complete before broadcasting
+          setTimeout(() => {
+            try {
+              this.app.socketManager.updateObject(targetShape.id, targetObjectData);
+
+              // Broadcast the deletion of the cutting object
+              console.log('Broadcasting deletion of cutting object:', cuttingShape.id);
+              this.app.socketManager.deleteObject(cuttingShape.id);
+
+              console.log('Boolean operation broadcasting completed successfully');
+            } catch (broadcastError) {
+              console.error('Broadcast failed:', broadcastError);
+              this.app.uiManager.showNotification('Failed to sync changes - please refresh', 'error');
+            }
+          }, 100);
+        } catch (error) {
+          console.error('Failed to broadcast boolean operation:', error);
+          console.error('Error details:', error.message, error.stack);
+          this.app.uiManager.showNotification('Failed to sync changes with other users', 'error');
+        }
+      }
+
+      // Hide the apply button
+      this.hideApplyButton();
+
+      // Switch back to select tool
+      this.handleToolClick('select');
+
+      this.app.uiManager.showNotification('Boolean subtract applied successfully', 'success');
+    } else {
+      // Cancel the pending history update on failure
+      if (this.app.historyManager) {
+        this.app.historyManager.pendingUpdate = null;
+      }
+      this.app.uiManager.showNotification('Boolean operation failed', 'error');
+    }
+  }
+
+  /**
+   * Show the apply boolean button
+   */
+  showApplyButton() {
+    const applyButton = document.getElementById('apply-boolean');
+    if (applyButton) {
+      applyButton.style.display = 'flex';
+    }
+  }
+
+  /**
+   * Hide the apply boolean button
+   */
+  hideApplyButton() {
+    const applyButton = document.getElementById('apply-boolean');
+    if (applyButton) {
+      applyButton.style.display = 'none';
+    }
   }
 }
