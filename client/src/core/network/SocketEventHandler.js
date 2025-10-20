@@ -49,6 +49,10 @@ export class SocketEventHandler {
       this.handleObjectDeleted(data);
     });
 
+    socketManager.onBooleanOperation((data) => {
+      this.handleBooleanOperation(data);
+    });
+
     socketManager.onError((error) => {
       console.error('Socket error:', error);
 
@@ -355,6 +359,87 @@ export class SocketEventHandler {
     // Notify AI chat if tracking AI operations
     if (this.aiChatCallback && this.aiChatCallback.trackAffectedShape) {
       this.aiChatCallback.trackAffectedShape(data.id);
+    }
+  }
+
+  /**
+   * Handle boolean operation event
+   */
+  handleBooleanOperation(data) {
+    console.log('🔧 Boolean operation event received:', data);
+
+    if (!data || !data.operation) {
+      console.error('🔴 Invalid boolean operation data:', data);
+      return;
+    }
+
+    const { operation, cuttingShapeId, targetShapeId } = data;
+
+    // Get the shapes from the shape manager
+    if (!this.app.shapeManager) {
+      console.error('🔴 Shape manager not available for boolean operation');
+      return;
+    }
+
+    const cuttingShape = this.app.shapeManager.getShape(cuttingShapeId);
+    const targetShape = this.app.shapeManager.getShape(targetShapeId);
+
+    console.log('🔧 Cutting shape found:', !!cuttingShape, cuttingShapeId);
+    console.log('🔧 Target shape found:', !!targetShape, targetShapeId);
+
+    if (!cuttingShape) {
+      console.error('🔴 Cutting shape not found:', cuttingShapeId);
+      console.log('🔧 Available shapes:', this.app.shapeManager.getAllShapes().map(s => ({id: s.id, type: s.type})));
+      return;
+    }
+
+    if (!targetShape) {
+      console.error('🔴 Target shape not found:', targetShapeId);
+      console.log('🔧 Available shapes:', this.app.shapeManager.getAllShapes().map(s => ({id: s.id, type: s.type})));
+      return;
+    }
+
+    console.log('🔧 Starting boolean operation:', operation, 'cutting:', cuttingShape.type, 'from:', targetShape.type);
+
+    // Perform the boolean operation using the client's BooleanManager
+    if (this.app.booleanManager) {
+      let success = false;
+
+      switch (operation) {
+        case 'subtract':
+          console.log('🔧 Calling applySubtract on BooleanManager');
+          success = this.app.booleanManager.applySubtract(targetShape);
+          console.log('🔧 applySubtract returned:', success);
+          break;
+        case 'union':
+          // For union, we want to combine two shapes
+          // The BooleanManager currently only supports subtract, so we'll simulate union by keeping both shapes
+          console.log('🔧 Boolean union requested - union operation not yet implemented, keeping both shapes');
+          success = true; // Don't fail, just keep both shapes
+          break;
+        case 'intersect':
+          // TODO: Implement intersect if needed
+          console.log('🔧 Boolean intersect not yet implemented on client side');
+          success = false;
+          break;
+        default:
+          console.error('🔴 Unknown boolean operation:', operation);
+          return;
+      }
+
+      if (success) {
+        console.log('🔧 Boolean operation completed successfully');
+      } else {
+        console.error('🔴 Boolean operation failed - check BooleanManager.applySubtract');
+      }
+    } else {
+      console.error('🔴 BooleanManager not available');
+    }
+
+    // Notify AI chat if tracking AI operations
+    if (this.aiChatCallback && this.aiChatCallback.trackAffectedShape) {
+      this.aiChatCallback.trackAffectedShape(targetShapeId);
+      this.aiChatCallback.trackAffectedShape(cuttingShapeId);
     }
   }
 }

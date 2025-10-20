@@ -133,6 +133,10 @@ export class SocketManager {
 
     this.socket.on('object-deleted', (data) => {
       this.onObjectDeletedCallback?.(data)
+
+      this.socket.on('boolean-operation', (data) => {
+        this.onBooleanOperationCallback?.(data)
+      })
     })
 
     // Error handling
@@ -287,6 +291,10 @@ export class SocketManager {
 
   onObjectDeleted(callback) {
     this.onObjectDeletedCallback = callback
+  }
+
+  onBooleanOperation(callback) {
+    this.onBooleanOperationCallback = callback
   }
 
   onError(callback) {

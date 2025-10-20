@@ -288,7 +288,7 @@ async function handleMoveShape(args, canvasId, userId, io) {
 }
 
 async function handleResizeShape(args, canvasId, userId, io) {
-  const { shapeId, width, height, scale = 1, shapeDescription } = args
+  const { shapeId, width, height, depth, scale = 1, scaleX, scaleY, scaleZ, shapeDescription } = args
 
   let targetShapeIds = shapeId ? [shapeId] : []
 
@@ -336,13 +336,34 @@ async function handleResizeShape(args, canvasId, userId, io) {
 
     let updateData = {}
 
-    if (width !== undefined && height !== undefined) {
+    // Handle absolute dimension resizing (width/height/depth)
+    if (width !== undefined) {
       updateData.scale_x = width / 2 // Assuming original size was 2
+    }
+    if (height !== undefined) {
       updateData.scale_y = height / 2
-    } else if (scale !== undefined) {
-      updateData.scale_x = obj.scale_x * scale
-      updateData.scale_y = obj.scale_y * scale
-      updateData.scale_z = obj.scale_z * scale
+    }
+    if (depth !== undefined) {
+      updateData.scale_z = depth / 2
+    }
+
+    // Handle scaling factors (scaleX/scaleY/scaleZ/scale)
+    // These are applied multiplicatively to current scale values
+    if (scaleX !== undefined) {
+      updateData.scale_x = (obj.scale_x || 1) * scaleX
+    }
+    if (scaleY !== undefined) {
+      updateData.scale_y = (obj.scale_y || 1) * scaleY
+    }
+    if (scaleZ !== undefined) {
+      updateData.scale_z = (obj.scale_z || 1) * scaleZ
+    }
+
+    // Handle proportional scaling (only if no individual scaling factors specified)
+    if (scale !== undefined && scaleX === undefined && scaleY === undefined && scaleZ === undefined && width === undefined && height === undefined && depth === undefined) {
+      updateData.scale_x = (obj.scale_x || 1) * scale
+      updateData.scale_y = (obj.scale_y || 1) * scale
+      updateData.scale_z = (obj.scale_z || 1) * scale
     }
 
     const { error } = await supabase
@@ -368,9 +389,31 @@ async function handleResizeShape(args, canvasId, userId, io) {
   }
 
   const shapeWord = resizedCount === 1 ? 'shape' : 'shapes'
-  const scaleText = scale !== 1 ? scale + "x scale" : (width || "current") + "×" + (height || "current")
+
+  let sizeText = ""
+
+  // Check what type of resizing was done
+  if (scaleX !== undefined || scaleY !== undefined || scaleZ !== undefined) {
+    // Individual axis scaling
+    const scales = []
+    if (scaleX !== undefined) scales.push("width: " + scaleX + "x")
+    if (scaleY !== undefined) scales.push("height: " + scaleY + "x")
+    if (scaleZ !== undefined) scales.push("depth: " + scaleZ + "x")
+    sizeText = scales.join(", ")
+  } else if (scale !== undefined && scale !== 1) {
+    // Proportional scaling
+    sizeText = scale + "x scale"
+  } else {
+    // Absolute sizing
+    const dimensions = []
+    if (width !== undefined) dimensions.push("width: " + width)
+    if (height !== undefined) dimensions.push("height: " + height)
+    if (depth !== undefined) dimensions.push("depth: " + depth)
+    sizeText = dimensions.length > 0 ? dimensions.join(", ") : "current size"
+  }
+
   return {
-    message: "Resized " + resizedCount + " " + shapeWord + " to " + scaleText + ".",
+    message: "Resized " + resizedCount + " " + shapeWord + " to " + sizeText + ".",
     actions: actions
   }
 }
@@ -892,36 +935,16 @@ async function handleBooleanSubtract(args, canvasId, userId, io) {
   }
 
   // Perform boolean subtract operation
-  // For now, we'll simulate this by updating the target shape's geometry
-  // In a real implementation, this would use CSG operations on the geometry data
+  // Emit event to client to perform the actual CSG boolean operation
 
   try {
-    // For now, just delete the cutting shape and mark the target as modified
-    await supabase
-      .from('objects')
-      .delete()
-      .eq('id', cuttingShape.id)
-      .eq('canvas_id', canvasId)
-
-    // Update target shape to indicate it has been modified (you might want to store CSG result)
-    const { error } = await supabase
-      .from('objects')
-      .update({
-        // You could store the modified geometry here
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', targetShape.id)
-      .eq('canvas_id', canvasId)
-
-    if (error) {
-      throw error
-    }
-
-    // Broadcast updates
-    io.to("canvas:" + canvasId).emit('object-deleted', { id: cuttingShape.id })
-    io.to("canvas:" + canvasId).emit('object-updated', {
-      id: targetShape.id,
-      updated_at: new Date().toISOString()
+    // Emit boolean operation event to all clients in the canvas
+    // The client will perform the actual CSG operation using three-csg-ts
+    io.to("canvas:" + canvasId).emit('boolean-operation', {
+      operation: 'subtract',
+      cuttingShapeId: cuttingShape.id,
+      targetShapeId: targetShape.id,
+      timestamp: Date.now()
     })
 
     return {
@@ -986,25 +1009,32 @@ async function handleBooleanUnion(args, canvasId, userId, io) {
     throw new Error('Cannot union a shape with itself')
   }
 
-  // For this implementation, we'll keep the first shape and delete the second
-  // In practice, you'd perform proper CSG union operation
-  await supabase
-    .from('objects')
-    .delete()
-    .eq('id', shape2.id)
-    .eq('canvas_id', canvasId)
+  // Perform boolean union operation
+  // Emit event to client to perform the actual CSG boolean operation
 
-  // Broadcast updates
-  io.to("canvas:" + canvasId).emit('object-deleted', { id: shape2.id })
+  try {
+    // Emit boolean operation event to all clients in the canvas
+    // The client will perform the actual CSG operation using three-csg-ts
+    io.to("canvas:" + canvasId).emit('boolean-operation', {
+      operation: 'union',
+      cuttingShapeId: shape2.id, // shape2 becomes the "cutting" shape for union
+      targetShapeId: shape1.id,
+      timestamp: Date.now()
+    })
 
-  return {
-    message: "Performed boolean union operation: combined " + shape1.type + " with " + shape2.type + ".",
-    actions: [{
-      type: 'boolean-union',
-      shape1Id: shape1.id,
-      shape2Id: shape2.id,
-      successMessage: "Combined " + shape1.type + " with " + shape2.type
-    }]
+    return {
+      message: "Performed boolean union operation: combined " + shape1.type + " with " + shape2.type + ".",
+      actions: [{
+        type: 'boolean-union',
+        shape1Id: shape1.id,
+        shape2Id: shape2.id,
+        successMessage: "Combined " + shape1.type + " with " + shape2.type
+      }]
+    }
+
+  } catch (error) {
+    console.error('Error in boolean union:', error)
+    throw new Error("Failed to perform boolean union: " + error.message)
   }
 }
 

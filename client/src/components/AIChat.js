@@ -34,6 +34,8 @@ export class AIChat {
             <div class="ai-suggestion">"Make a login form"</div>
             <div class="ai-suggestion">"Create text"</div>
             <div class="ai-suggestion">"Grid of boxes"</div>
+            <div class="ai-suggestion">"Inscribe text in object"</div>
+            <div class="ai-suggestion">"Create a cup"</div>
           </div>
           <div class="ai-chat-input-section">
             <input
@@ -82,6 +84,8 @@ export class AIChat {
               <div class="ai-example">"Add a green torus at 0, 2, 0"</div>
               <div class="ai-example">"Move all red spheres to the center"</div>
               <div class="ai-example">"Create text that says 'Hello World'"</div>
+              <div class="ai-example">"Create a cube with 'HELLO' inscribed in it"</div>
+              <div class="ai-example">"Make a cup using boolean operations"</div>
             </div>
           </div>
         </div>

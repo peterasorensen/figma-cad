@@ -127,7 +127,7 @@ export const aiFunctions = {
 
   resizeShape: {
     name: 'resizeShape',
-    description: 'Resize an existing shape',
+    description: 'Resize an existing shape. You can specify absolute sizes (width/height/depth) OR scaling factors (scale/scaleX/scaleY/scaleZ). Scaling factors multiply current dimensions.',
     parameters: {
       type: 'object',
       properties: {
@@ -137,15 +137,31 @@ export const aiFunctions = {
         },
         width: {
           type: 'number',
-          description: 'New width'
+          description: 'New absolute width'
         },
         height: {
           type: 'number',
-          description: 'New height'
+          description: 'New absolute height'
+        },
+        depth: {
+          type: 'number',
+          description: 'New absolute depth (for 3D shapes like boxes, cylinders, text)'
         },
         scale: {
           type: 'number',
-          description: 'Scale factor (alternative to width/height)'
+          description: 'Scale factor to resize all dimensions proportionally'
+        },
+        scaleX: {
+          type: 'number',
+          description: 'Scale factor for width only (multiplies current width)'
+        },
+        scaleY: {
+          type: 'number',
+          description: 'Scale factor for height only (multiplies current height)'
+        },
+        scaleZ: {
+          type: 'number',
+          description: 'Scale factor for depth only (multiplies current depth)'
         },
         shapeDescription: {
           type: 'string',
@@ -348,32 +364,32 @@ export const aiFunctions = {
     }
   },
 
-  booleanUnion: {
-    name: 'booleanUnion',
-    description: 'Combine two shapes into one using boolean union. Both shapes become one merged shape.',
-    parameters: {
-      type: 'object',
-      properties: {
-        shape1Description: {
-          type: 'string',
-          description: 'Description of the first shape to combine'
-        },
-        shape2Description: {
-          type: 'string',
-          description: 'Description of the second shape to combine'
-        },
-        shape1Id: {
-          type: 'string',
-          description: 'ID of the first shape (alternative to shape1Description)'
-        },
-        shape2Id: {
-          type: 'string',
-          description: 'ID of the second shape (alternative to shape2Description)'
-        }
-      },
-      required: []
-    }
-  },
+  // booleanUnion: {
+  //   name: 'booleanUnion',
+  //   description: 'Combine two shapes into one using boolean union. Both shapes become one merged shape.',
+  //   parameters: {
+  //     type: 'object',
+  //     properties: {
+  //       shape1Description: {
+  //         type: 'string',
+  //         description: 'Description of the first shape to combine'
+  //       },
+  //       shape2Description: {
+  //         type: 'string',
+  //         description: 'Description of the second shape to combine'
+  //       },
+  //       shape1Id: {
+  //         type: 'string',
+  //         description: 'ID of the first shape (alternative to shape1Description)'
+  //       },
+  //       shape2Id: {
+  //         type: 'string',
+  //         description: 'ID of the second shape (alternative to shape2Description)'
+  //       }
+  //     },
+  //     required: []
+  //   }
+  // },
 
   // booleanIntersect: {
   //   name: 'booleanIntersect',
@@ -419,6 +435,25 @@ export function setupAIChatEndpoint(app, io) {
         .select('*')
         .eq('canvas_id', canvasId)
 
+      // Extract text for inscription requests
+      let requestedText = "HELLO" // default
+      const inscriptionKeywords = ["inscribe", "engrave", "carve", "cut into"]
+      const hasInscription = inscriptionKeywords.some(keyword => message.toLowerCase().includes(keyword))
+
+      if (hasInscription) {
+        // Extract text for inscription - look for quoted text in inscription commands
+        const quotedMatch = message.match(/(?:inscribe|engrave|carve).*?["']([^"']+)["']/i)
+        if (quotedMatch) {
+          requestedText = quotedMatch[1]
+        } else {
+          // Fallback: any quoted text in the message
+          const anyQuoted = message.match(/["']([^"']+)["']/)
+          if (anyQuoted) {
+            requestedText = anyQuoted[1]
+          }
+        }
+      }
+
       const canvasContext = objects ? objects.map(obj => {
         // Build properties from individual columns
         const properties = {
@@ -450,13 +485,67 @@ export function setupAIChatEndpoint(app, io) {
       }) : []
 
       // Create system prompt with canvas context
-      const systemPrompt = `You are an AI Canvas Agent that builds complex 2D layouts using only createShape calls. Understand patterns and apply them intelligently.
+      const systemPrompt = `You are an AI Canvas Agent that builds complex 2D layouts and 3D objects using shape creation and boolean operations. You have access to comprehensive canvas manipulation functions.
+
+For inscription requests, the requested text is: "${requestedText}"
 
 CANVAS SYSTEM:
 - 50x50 unit canvas (-25 to +25 in X/Z)
 - For 2D layouts: use XY plane (y=0.05 for shapes, y=1 for text)
 - Text rotation: no rotation means text is straight up and down along x axis
 - Font sizes: 1 font size per unit for readability in 50x50 space
+
+AVAILABLE FUNCTIONS:
+SHAPE CREATION: createShape (box, sphere, cylinder, torus, text, etc.)
+MOVEMENT: moveShape, moveToPosition (center, corners, etc.)
+MODIFICATION: resizeShape (supports scaleX/scaleY/scaleZ for individual axis scaling), rotateShape, deleteShape
+BOOLEAN OPERATIONS: booleanSubtract (cut holes)
+LAYOUT: arrangeShapes (horizontal/vertical/grid), createGrid
+INFO: getCanvasState (current shapes)
+
+TEXT INSCRIPTION WORKFLOW:
+IMPORTANT: When ANY request mentions "inscribe", "engrave", "carve", "cut into", or similar words:
+1. ALWAYS createShape for the base object first
+2. ALWAYS createShape for the text
+3. ALWAYS resizeShape the text to be smaller (scale=0.5) and deeper (depth=0.3)
+4. ALWAYS moveShape the text to intersect with the base object
+5. ALWAYS booleanSubtract the text from the base object
+
+REQUIRED STEPS FOR TEXT INSCRIPTION:
+- createShape(type="box", x=0, y=0, z=0, width=4, height=4, depth=4)  // Base object
+- createShape(type="text", text="HELLO", x=0, y=0, z=0, fontSize=1)  // Text
+- resizeShape(shapeDescription="HELLO", scale=0.5, depth=0.3)  // Make text smaller and deeper
+- moveShape(shapeDescription="HELLO", x=0, y=0, z=0)  // Position to intersect
+- booleanSubtract(cuttingShapeDescription="HELLO", targetShapeDescription="box")  // Cut the text
+
+RESIZE EXAMPLES:
+- resizeShape(shapeDescription="text", scaleX=2)  // Double width only
+- resizeShape(shapeDescription="box", scaleY=0.5)  // Half height only
+- resizeShape(shapeDescription="cylinder", scaleZ=10)  // 10x depth scaling
+- resizeShape(shapeDescription="sphere", scale=1.5)  // Scale all dimensions 1.5x proportionally
+
+NOTE: scaleX/scaleY/scaleZ multiply the current dimension. Use scaleZ=10 to make depth 10 times larger!
+
+Example: "inscribe 'HELLO' in a cube" MUST call all 5 functions above in sequence.
+
+CREATING OBJECTS WITH HOLES/CUTS:
+For objects with holes or cutouts:
+1. Create the main/base shape
+2. Create a cutting shape (cylinder, box, etc.) positioned where you want the hole
+3. Use booleanSubtract to cut the hole
+Example: "create a cup" → createShape(cylinder tall), createShape(cylinder smaller, positioned inside), booleanSubtract(small cylinder from tall cylinder)
+
+BOOLEAN OPERATIONS EXAMPLES:
+- CUP: createShape(type="cylinder", height=5, radius=2), createShape(type="cylinder", height=4, radius=1.5, positioned inside), booleanSubtract(inner from outer)
+- RING: createShape(type="cylinder", height=1), createShape(type="cylinder", height=1, radius=0.5, positioned inside), booleanSubtract(inner from outer)
+- ENGRAVED TEXT: createShape(base object), createShape(text), resizeShape(text, depth=0.3), position text to intersect, booleanSubtract(text from base)
+- HOLLOW SPHERE: createShape(type="sphere", radius=3), createShape(type="sphere", radius=2.5), booleanSubtract(inner from outer)
+
+WORKFLOW FOR COMPLEX OBJECTS:
+1. Break down the request into primitive shapes
+2. Create all needed shapes with proper positioning
+3. Use boolean operations to combine/cut as needed
+4. Clean up by deleting temporary cutting shapes
 
 INTELLIGENT 2D LAYOUTS:
 FORMS: Group input fields vertically, labels left of inputs, buttons at bottom
@@ -465,9 +554,8 @@ FORMS: Group input fields vertically, labels left of inputs, buttons at bottom
 - Labels: text positioned near inputs
 - Buttons: colored rectangles with centered text
 - Space elements 2-3 units apart logically
-- Text: DEFAULT Y/Z rotation with x rotation by 3*Math.PI/2 intelligently to lie flat
+- Text: DEFAULT Y/Z rotation with x rotation by 3*Math.PI/2 to lie flat
 - AVOID stacking text directly on top of each other on the xy plane when generating more 2d-like requests
-
 
 POSTERS/LAYOUTS: Use visual hierarchy - titles at top, content below, balanced spacing
 
@@ -490,10 +578,21 @@ ${canvasContext.map(shape =>
   `- ${shape.type} at (${Math.round(shape.position.x)}, ${Math.round(shape.position.y)}, ${Math.round(shape.position.z)}) - ID: ${shape.id}${shape.color ? ` - Color: ${shape.color}` : ""}${shape.properties?.text ? ` - Text: "${shape.properties.text}"` : ""}`
 ).join("\n")}
 
-For complex requests, analyze the pattern and create multiple createShape calls. Apply logical spacing, appropriate colors, and flat text rotation for 2D layouts.`
+For complex requests, analyze the pattern and use MULTIPLE function calls in sequence. Apply logical spacing, appropriate colors, and flat text rotation for 2D layouts. Use boolean operations for complex 3D objects.
+
+CRITICAL: For inscription requests, you MUST make multiple function calls in sequence:
+
+1. First create the base shape (cube/box)
+2. Then create the text shape with the inscription text
+3. Then resize the text to be smaller and add depth (use depth parameter to make it 3D)
+4. Then position the text to intersect with the base shape
+5. Finally use booleanSubtract to cut the text shape from the base shape
+
+IMPORTANT: Always use the EXACT text from the user's request as the shapeDescription for the text-related functions.`
+
       // Call OpenAI with tools API (enables multiple parallel tool calls)
       const completion = await openai.chat.completions.create({
-        model: 'gpt-4o-mini',
+        model: 'gpt-4o',
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: message }
@@ -508,6 +607,7 @@ For complex requests, analyze the pattern and create multiple createShape calls.
       })
 
       const response = completion.choices[0].message
+
 
       // Process tool calls (modern API supports multiple parallel calls)
       const actions = []

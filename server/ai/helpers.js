@@ -47,6 +47,22 @@ export function findShapesByDescription(shapes, description) {
     }
   }
 
+  // For text shapes, also filter by text content if specified
+  if (desc.includes('text') || filteredShapes.some(shape => shape.type === 'text')) {
+    // Check if the description contains specific text (like "HELLO")
+    const textShapes = filteredShapes.filter(shape => shape.type === 'text')
+    if (textShapes.length > 0) {
+      // Look for exact text matches in the description
+      const matchingTextShapes = textShapes.filter(shape => {
+        const shapeText = shape.properties?.text || ''
+        return desc.includes(shapeText.toLowerCase()) || shapeText.toLowerCase().includes(desc)
+      })
+      if (matchingTextShapes.length > 0) {
+        filteredShapes = matchingTextShapes
+      }
+    }
+  }
+
   return filteredShapes
 }
 
