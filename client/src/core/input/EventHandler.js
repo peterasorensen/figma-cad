@@ -399,25 +399,38 @@ export class EventHandler {
 
         // Determine current selection and attach appropriate controls
         const selectedShapes = this.app.shapeManager.getSelectedShapes();
+        let attachSuccess = false;
+
         if (selectedShapes.length > 1) {
           // Attach group controls to multiple selections
           const allMeshes = selectedShapes.map(s => s.mesh);
-          this.app.transform.attachMultiple(allMeshes);
+          attachSuccess = this.app.transform.attachMultiple(allMeshes);
 
-          // Show object controls at centroid of selection
-          if (this.app.objectControls) {
-            this.app.objectControls.show(allMeshes, null);
-            this.app.objectControls.updateButtonStates(this.app.transform.getMode());
+          if (attachSuccess) {
+            // Show object controls at centroid of selection
+            if (this.app.objectControls) {
+              this.app.objectControls.show(allMeshes, null);
+              this.app.objectControls.updateButtonStates(this.app.transform.getMode());
+            }
           }
         } else {
           // Single selection - attach to the shape
-          this.app.transform.attach(shape.mesh);
+          attachSuccess = this.app.transform.attach(shape.mesh);
 
-          // Show object controls above the selected object
-          if (this.app.objectControls) {
-            this.app.objectControls.show(shape.mesh, shape);
-            this.app.objectControls.updateButtonStates(this.app.transform.getMode());
+          if (attachSuccess) {
+            // Show object controls above the selected object
+            if (this.app.objectControls) {
+              this.app.objectControls.show(shape.mesh, shape);
+              this.app.objectControls.updateButtonStates(this.app.transform.getMode());
+            }
           }
+        }
+
+        // If attachment failed due to locks, show notification and clear selection
+        if (!attachSuccess) {
+          this.app.uiManager.showNotification('Cannot select object - currently being edited by another user', 'warning');
+          this.app.shapeManager.clearSelection();
+          return;
         }
       }
     } else {
@@ -807,28 +820,45 @@ export class EventHandler {
 
     // Handle transform controls for multiple selections
     if (selectedShapes.length > 0) {
+      let attachSuccess = false;
+
       if (selectedShapes.length === 1) {
         // Single selection - attach to the shape
         const shape = selectedShapes[0];
-        this.app.transform.attach(shape.mesh);
+        attachSuccess = this.app.transform.attach(shape.mesh);
 
-        // Show object controls above the selected object
-        if (this.app.objectControls) {
-          this.app.objectControls.show(shape.mesh, shape);
-          this.app.objectControls.updateButtonStates(this.app.transform.getMode());
+        if (attachSuccess) {
+          // Show object controls above the selected object
+          if (this.app.objectControls) {
+            this.app.objectControls.show(shape.mesh, shape);
+            this.app.objectControls.updateButtonStates(this.app.transform.getMode());
+          }
         }
       } else {
         // Multiple selection - attach group transform controls
         const allMeshes = selectedShapes.map(shape => shape.mesh);
-        this.app.transform.attachMultiple(allMeshes);
+        attachSuccess = this.app.transform.attachMultiple(allMeshes);
 
-        // Show object controls at centroid of selection
-        if (this.app.objectControls) {
-          this.app.objectControls.show(allMeshes, null);
-          this.app.objectControls.updateButtonStates(this.app.transform.getMode());
+        if (attachSuccess) {
+          // Show object controls at centroid of selection
+          if (this.app.objectControls) {
+            this.app.objectControls.show(allMeshes, null);
+            this.app.objectControls.updateButtonStates(this.app.transform.getMode());
+          }
+
+          console.log(`Multi-selected ${selectedShapes.length} shapes with group controls`);
         }
+      }
 
-        console.log(`Multi-selected ${selectedShapes.length} shapes with group controls`);
+      // If attachment failed due to locks, show notification and clear selection
+      if (!attachSuccess) {
+        this.app.uiManager.showNotification('Cannot select objects - some are currently being edited by another user', 'warning');
+        this.app.shapeManager.clearSelection();
+        // Detach transform controls
+        this.app.transform.detach();
+        if (this.app.objectControls) {
+          this.app.objectControls.hide();
+        }
       }
     } else {
       // No shapes selected, detach transform controls

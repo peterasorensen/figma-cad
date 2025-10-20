@@ -81,6 +81,12 @@ export class Transform {
    */
   attach(object) {
     if (object) {
+      // Check if object is locked by another user before attaching
+      if (this.app && this.app.isObjectLockedByOtherUser && this.app.isObjectLockedByOtherUser(object)) {
+        console.log('🔒 Cannot attach transform controls - object is locked by another user');
+        return false;
+      }
+
       this.controls.attach(object);
       this.attachedObject = object;
       this.multiSelectObjects = [];
@@ -91,7 +97,9 @@ export class Transform {
         scale: object.scale.clone()
       }];
       this.controls.visible = true;
+      return true;
     }
+    return false;
   }
 
   /**
@@ -99,6 +107,14 @@ export class Transform {
    */
   attachMultiple(objects) {
     if (objects && objects.length > 0) {
+      // Check if any objects are locked by other users
+      for (const obj of objects) {
+        if (this.app && this.app.isObjectLockedByOtherUser && this.app.isObjectLockedByOtherUser(obj)) {
+          console.log('Cannot attach transform controls - one or more objects are locked by another user');
+          return false;
+        }
+      }
+
       // Use the first object as the primary control object
       this.attachedObject = objects[0];
       this.multiSelectObjects = objects.slice(1); // All other objects
@@ -115,7 +131,9 @@ export class Transform {
 
       // Add visual helpers to all selected objects
       this.addVisualHelpers(objects);
+      return true;
     }
+    return false;
   }
 
   /**

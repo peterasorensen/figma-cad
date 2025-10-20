@@ -631,7 +631,11 @@ export class App {
   isObjectLockedByOtherUser(object) {
     if (!object?.userData?.shapeId) return false;
     const lock = this.objectLocks.get(object.userData.shapeId);
-    return lock && lock.userId !== this.auth.userId;
+    const isLocked = lock && lock.userId !== this.auth.userId;
+    if (isLocked) {
+      console.log(`🔒 Object ${object.userData.shapeId} is locked by user ${lock.userId} (current user: ${this.auth.userId})`);
+    }
+    return isLocked;
   }
 
   /**
@@ -679,7 +683,7 @@ export class App {
       });
     }
 
-    console.log(`Acquired lock on ${shapeId}`);
+    console.log(`🔒 Acquired lock on ${shapeId} for user ${this.auth.userId}`);
     return true;
   }
 
