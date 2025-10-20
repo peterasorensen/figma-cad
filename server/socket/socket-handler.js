@@ -8,7 +8,8 @@ import {
   MAX_CONNECTIONS,
   updateUserSession,
   removeUserSession,
-  getActiveUserSessions
+  getActiveUserSessions,
+  getCanvasObjects
 } from '../canvas/canvas-operations.js'
 
 // Map to store throttled object update timeouts
@@ -72,8 +73,8 @@ export function setupSocketHandlers(io) {
         // In production, you'd validate canvas exists in database
         console.log(`📊 Skipping canvas validation for testing: ${canvasId}`)
 
-        // Get real active user sessions from database
-        const objects = [] // Empty canvas for testing
+        // Get real active user sessions and objects from database
+        const objects = await getCanvasObjects(canvasId)
         const sessions = await getActiveUserSessions(canvasId)
 
         // Ensure current user is in the sessions (in case they just joined and session hasn't been saved yet)

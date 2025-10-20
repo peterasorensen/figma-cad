@@ -124,3 +124,24 @@ export async function getActiveUserSessions(canvasId) {
     return []
   }
 }
+
+export async function getCanvasObjects(canvasId) {
+  try {
+    const { data: objects, error } = await supabase
+      .from('objects')
+      .select('*')
+      .eq('canvas_id', canvasId)
+      .order('created_at', { ascending: true })
+
+    if (error) {
+      console.error('Error fetching canvas objects:', error)
+      return []
+    }
+
+    console.log(`📊 Found ${objects?.length || 0} objects for canvas ${canvasId}`)
+    return objects || []
+  } catch (error) {
+    console.error('Error getting canvas objects:', error)
+    return []
+  }
+}
