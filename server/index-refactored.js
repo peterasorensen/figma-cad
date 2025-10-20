@@ -8,7 +8,7 @@ const { app, server, io } = createApp()
 
 // Set up all the routes and handlers
 setupApiRoutes(app)
-setupAIChatEndpoint(app, io)
+setupAIChatEndpoint(app)
 setupSocketHandlers(io)
 
 // Start the server

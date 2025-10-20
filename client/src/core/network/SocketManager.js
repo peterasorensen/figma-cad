@@ -11,6 +11,9 @@ export class SocketManager {
     this.maxReconnectAttempts = 5
     this.pendingCanvasJoin = null // Queue for canvas join requests
     this.authCheckInterval = null
+    this.manualReconnectTimer = null // Timer for manual reconnection attempts
+    this.manualReconnectInterval = 1000 // 1 second for more aggressive reconnection
+    this.hasEverConnected = false // Track if we've ever successfully connected
   }
 
   connect() {
@@ -26,9 +29,16 @@ export class SocketManager {
     })
 
     this.socket.on('connect', () => {
-      console.log('Connected to server')
+      console.log('Connected to server - setting isConnected = true')
       this.isConnected = true
+      this.hasEverConnected = true // Mark that we've successfully connected at least once
       this.reconnectAttempts = 0
+      console.log('About to clear manual reconnection timer, current timer:', !!this.manualReconnectTimer)
+
+      // Clear manual reconnection timer when successfully connected
+      this.clearManualReconnectTimer()
+
+      console.log('After clearing timer, isConnected:', this.isConnected, 'hasTimer:', !!this.manualReconnectTimer)
 
       // Process any pending canvas join if we have one
       if (this.pendingCanvasJoin) {
@@ -43,20 +53,55 @@ export class SocketManager {
 
     this.socket.on('connect_error', (error) => {
       console.error('Socket connection error:', error)
+      this.isConnected = false
+      // Notify UI of connection status change
+      this.onConnectionStatusChangeCallback?.({ connected: false, error: error.message })
     })
 
     this.socket.on('error', (error) => {
       console.error('Socket error:', error)
+      this.isConnected = false
+      // Notify UI of connection status change
+      this.onConnectionStatusChangeCallback?.({ connected: false, error: error.message })
     })
 
     this.socket.on('reconnect', (attemptNumber) => {
       console.log(`Reconnected after ${attemptNumber} attempts`)
       this.reconnectAttempts = attemptNumber
+      this.isConnected = true
+      // Notify UI of successful reconnection
+      this.onConnectionStatusChangeCallback?.({ connected: true })
     })
 
     this.socket.on('reconnect_failed', () => {
       console.error('Failed to reconnect to server')
       this.isConnected = false
+      // Notify UI of reconnection failure
+      this.onConnectionStatusChangeCallback?.({ connected: false, error: 'Reconnection failed' })
+
+      // Start manual reconnection attempts
+      this.startManualReconnectTimer()
+    })
+
+    // Handle connection state changes more comprehensively
+    this.socket.on('connecting', () => {
+      console.log('Socket connecting...')
+      this.isConnected = false
+      this.onConnectionStatusChangeCallback?.({ connected: false, connecting: true })
+    })
+
+    this.socket.on('disconnect', (reason) => {
+      console.log('Disconnected from server:', reason, 'isConnected was:', this.isConnected)
+      this.isConnected = false
+      // Clear online users when disconnected
+      if (this.onDisconnectCallback) {
+        this.onDisconnectCallback(reason)
+      }
+      this.onConnectionStatusChangeCallback?.({ connected: false, reason })
+
+      // Start manual reconnection timer for aggressive reconnection
+      this.startManualReconnectTimer()
+      console.log('Manual reconnection timer started after disconnect')
     })
 
     // Canvas events
@@ -109,6 +154,7 @@ export class SocketManager {
     // Clean up pending operations
     this.pendingCanvasJoin = null
     this.stopAuthCheck()
+    this.clearManualReconnectTimer()
   }
 
   joinCanvas(canvasId) {
@@ -245,6 +291,63 @@ export class SocketManager {
 
   onError(callback) {
     this.onErrorCallback = callback
+  }
+
+  onDisconnect(callback) {
+    this.onDisconnectCallback = callback
+  }
+
+  onConnectionStatusChange(callback) {
+    this.onConnectionStatusChangeCallback = callback
+  }
+
+  /**
+   * Start manual reconnection timer for continuous reconnection attempts
+   */
+  startManualReconnectTimer() {
+    if (this.manualReconnectTimer) return // Already running
+
+    console.log(`Starting manual reconnection timer (${this.manualReconnectInterval}ms interval)`)
+
+    this.manualReconnectTimer = setInterval(() => {
+      if (this.socket) {
+        console.log('Manual reconnection check - connected:', this.socket.connected, 'connecting:', this.socket.connecting)
+
+        if (!this.socket.connected) {
+          console.log('Attempting manual reconnection...')
+          try {
+            // Always disconnect first to ensure clean state
+            this.socket.disconnect()
+
+            // Small delay before reconnecting to avoid race conditions
+            setTimeout(() => {
+              if (this.socket && !this.socket.connected) {
+                console.log('Executing manual reconnect...')
+                this.socket.connect()
+              }
+            }, 100)
+          } catch (error) {
+            console.error('Error during manual reconnection:', error)
+          }
+        }
+      } else {
+        console.log('No socket available for manual reconnection')
+      }
+    }, this.manualReconnectInterval)
+  }
+
+  /**
+   * Clear the manual reconnection timer
+   */
+  clearManualReconnectTimer() {
+    if (this.manualReconnectTimer) {
+      console.log('Clearing manual reconnection timer')
+      clearInterval(this.manualReconnectTimer)
+      this.manualReconnectTimer = null
+      console.log('Manual reconnection timer cleared, isConnected:', this.isConnected)
+    } else {
+      console.log('Manual reconnection timer was already null')
+    }
   }
 }
 

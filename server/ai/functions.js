@@ -1,0 +1,557 @@
+import OpenAI from 'openai'
+import path from 'path'
+import dotenv from 'dotenv'
+import { supabase } from '../core/database.js'
+import { executeCanvasFunction } from './canvas-operations.js'
+
+// Load environment variables
+dotenv.config({ path: path.join(process.cwd(), 'server', '.env') })
+
+// Initialize OpenAI client
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY
+})
+
+// AI Canvas Agent Functions
+export const aiFunctions = {
+  createShape: {
+    name: 'createShape',
+    description: 'Create a new shape on the canvas. 2D shapes (rectangle, circle) are placed on the ground plane. 3D shapes are positioned in 3D space.',
+    parameters: {
+      type: 'object',
+      properties: {
+        type: {
+          type: 'string',
+          enum: ['rectangle', 'circle', 'box', 'sphere', 'cylinder', 'text', 'torus', 'torusKnot', 'dodecahedron', 'icosahedron', 'octahedron', 'tetrahedron', 'tube'],
+          description: 'The type of shape to create'
+        },
+        x: {
+          type: 'number',
+          description: 'X coordinate (horizontal position, 0 is center of canvas)'
+        },
+        y: {
+          type: 'number',
+          description: 'Y coordinate (height above ground for 3D shapes, ignored for 2D shapes)'
+        },
+        z: {
+          type: 'number',
+          description: 'Z coordinate (depth position for 3D shapes, or ground position for 2D shapes)'
+        },
+        width: {
+          type: 'number',
+          description: 'Width of the shape (for rectangles, boxes)'
+        },
+        height: {
+          type: 'number',
+          description: 'Height of the shape (for rectangles, boxes)'
+        },
+        depth: {
+          type: 'number',
+          description: 'Depth of the shape (for boxes)'
+        },
+        radius: {
+          type: 'number',
+          description: 'Radius of the shape (for circles, spheres, cylinders, platonic solids)'
+        },
+        tube: {
+          type: 'number',
+          description: 'Tube radius (for torus, torusKnot shapes)'
+        },
+        tubularSegments: {
+          type: 'number',
+          description: 'Number of segments along the tube path (for tube shapes)'
+        },
+        radialSegments: {
+          type: 'number',
+          description: 'Number of radial segments (for tube shapes)'
+        },
+        color: {
+          type: 'string',
+          description: 'Color of the shape (hex code like #ff0000 or #4f46e5)'
+        },
+        text: {
+          type: 'string',
+          description: 'Text content (for text shapes only)'
+        },
+        fontSize: {
+          type: 'number',
+          description: 'Font size for text (default 12)'
+        },
+        rotation_x: {
+          type: 'number',
+          description: 'X rotation in radians (use Math.PI/2 for flat text in 2D layouts)'
+        },
+        rotation_y: {
+          type: 'number',
+          description: 'Y rotation in radians'
+        },
+        rotation_z: {
+          type: 'number',
+          description: 'Z rotation in radians'
+        }
+      },
+      required: ['type']
+    }
+  },
+
+  moveShape: {
+    name: 'moveShape',
+    description: 'Move an existing shape to a new position. For 2D shapes, only x,z coordinates matter. For 3D shapes, use x,y,z coordinates.',
+    parameters: {
+      type: 'object',
+      properties: {
+        shapeId: {
+          type: 'string',
+          description: 'ID of the shape to move'
+        },
+        x: {
+          type: 'number',
+          description: 'New X coordinate (horizontal position, 0 is center)'
+        },
+        y: {
+          type: 'number',
+          description: 'New Y coordinate (height above ground, 0 = ground level)'
+        },
+        z: {
+          type: 'number',
+          description: 'New Z coordinate (depth position, 0 is center)'
+        },
+        shapeDescription: {
+          type: 'string',
+          description: 'Description of the shape to move (e.g., "red rectangle", "blue circle") - alternative to shapeId'
+        }
+      },
+      required: []
+    }
+  },
+
+  resizeShape: {
+    name: 'resizeShape',
+    description: 'Resize an existing shape',
+    parameters: {
+      type: 'object',
+      properties: {
+        shapeId: {
+          type: 'string',
+          description: 'ID of the shape to resize'
+        },
+        width: {
+          type: 'number',
+          description: 'New width'
+        },
+        height: {
+          type: 'number',
+          description: 'New height'
+        },
+        scale: {
+          type: 'number',
+          description: 'Scale factor (alternative to width/height)'
+        },
+        shapeDescription: {
+          type: 'string',
+          description: 'Description of the shape to resize (e.g., "red rectangle", "blue circle") - alternative to shapeId'
+        }
+      },
+      required: []
+    }
+  },
+
+  rotateShape: {
+    name: 'rotateShape',
+    description: 'Rotate an existing shape',
+    parameters: {
+      type: 'object',
+      properties: {
+        shapeId: {
+          type: 'string',
+          description: 'ID of the shape to rotate'
+        },
+        degrees: {
+          type: 'number',
+          description: 'Rotation angle in degrees'
+        },
+        shapeDescription: {
+          type: 'string',
+          description: 'Description of the shape to rotate (e.g., "red rectangle", "blue circle") - alternative to shapeId'
+        }
+      },
+      required: ['degrees']
+    }
+  },
+
+  deleteShape: {
+    name: 'deleteShape',
+    description: 'Delete an existing shape',
+    parameters: {
+      type: 'object',
+      properties: {
+        shapeId: {
+          type: 'string',
+          description: 'ID of the shape to delete'
+        },
+        shapeDescription: {
+          type: 'string',
+          description: 'Description of the shape to delete (e.g., "red rectangle", "blue circle") - alternative to shapeId'
+        }
+      },
+      required: []
+    }
+  },
+
+  getCanvasState: {
+    name: 'getCanvasState',
+    description: 'Get current state of the canvas including all shapes',
+    parameters: {
+      type: 'object',
+      properties: {}
+    }
+  },
+
+  arrangeShapes: {
+    name: 'arrangeShapes',
+    description: 'Arrange multiple shapes in a layout pattern',
+    parameters: {
+      type: 'object',
+      properties: {
+        shapeIds: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Array of shape IDs to arrange'
+        },
+        layout: {
+          type: 'string',
+          enum: ['horizontal', 'vertical', 'grid'],
+          description: 'Layout arrangement type'
+        },
+        spacing: {
+          type: 'number',
+          description: 'Spacing between shapes',
+          default: 50
+        },
+        startX: {
+          type: 'number',
+          description: 'Starting X position for arrangement'
+        },
+        startY: {
+          type: 'number',
+          description: 'Starting Y position for arrangement'
+        },
+        columns: {
+          type: 'number',
+          description: 'Number of columns for grid layout'
+        },
+        shapeDescription: {
+          type: 'string',
+          description: 'Description of shapes to arrange (e.g., "all rectangles", "red shapes") - alternative to shapeIds'
+        }
+      },
+      required: ['layout']
+    }
+  },
+
+  createGrid: {
+    name: 'createGrid',
+    description: 'Create a grid of shapes',
+    parameters: {
+      type: 'object',
+      properties: {
+        shapeType: {
+          type: 'string',
+          enum: ['rectangle', 'circle', 'box', 'sphere'],
+          description: 'Type of shapes to create in the grid'
+        },
+        rows: {
+          type: 'number',
+          description: 'Number of rows'
+        },
+        columns: {
+          type: 'number',
+          description: 'Number of columns'
+        },
+        startX: {
+          type: 'number',
+          description: 'Starting X position'
+        },
+        startY: {
+          type: 'number',
+          description: 'Starting Y position'
+        },
+        startZ: {
+          type: 'number',
+          description: 'Starting Z position'
+        },
+        spacing: {
+          type: 'number',
+          description: 'Spacing between shapes'
+        },
+        size: {
+          type: 'number',
+          description: 'Size of each shape'
+        },
+        color: {
+          type: 'string',
+          description: 'Color of the shapes'
+        }
+      },
+      required: ['shapeType', 'rows', 'columns']
+    }
+  },
+
+  moveToPosition: {
+    name: 'moveToPosition',
+    description: 'Move one or more shapes to a named position like center, top-left, bottom-right, etc. Use descriptions like "all red spheres" to move multiple shapes.',
+    parameters: {
+      type: 'object',
+      properties: {
+        shapeDescription: {
+          type: 'string',
+          description: 'Description of the shape(s) to move (can include "all" for multiple shapes)'
+        },
+        position: {
+          type: 'string',
+          enum: ['center', 'top-left', 'top-right', 'bottom-left', 'bottom-right', 'top-center', 'bottom-center', 'left-center', 'right-center'],
+          description: 'Named position to move the shape(s) to'
+        },
+        height: {
+          type: 'number',
+          description: 'Height above ground (for 3D shapes, default 0 for center, 5 for others)'
+        }
+      },
+      required: ['position']
+    }
+  },
+
+  booleanSubtract: {
+    name: 'booleanSubtract',
+    description: 'Perform a boolean subtract operation: cut one shape (cutting object) from another shape (target). The cutting object is removed after the operation. Use this to create holes, engrave text, or cut shapes.',
+    parameters: {
+      type: 'object',
+      properties: {
+        cuttingShapeDescription: {
+          type: 'string',
+          description: 'Description of the shape to use as the cutting tool (will be removed after operation)'
+        },
+        targetShapeDescription: {
+          type: 'string',
+          description: 'Description of the shape to cut into (the base shape that will have the hole/engraving)'
+        },
+        cuttingShapeId: {
+          type: 'string',
+          description: 'ID of the cutting shape (alternative to cuttingShapeDescription)'
+        },
+        targetShapeId: {
+          type: 'string',
+          description: 'ID of the target shape (alternative to targetShapeDescription)'
+        }
+      },
+      required: []
+    }
+  },
+
+  booleanUnion: {
+    name: 'booleanUnion',
+    description: 'Combine two shapes into one using boolean union. Both shapes become one merged shape.',
+    parameters: {
+      type: 'object',
+      properties: {
+        shape1Description: {
+          type: 'string',
+          description: 'Description of the first shape to combine'
+        },
+        shape2Description: {
+          type: 'string',
+          description: 'Description of the second shape to combine'
+        },
+        shape1Id: {
+          type: 'string',
+          description: 'ID of the first shape (alternative to shape1Description)'
+        },
+        shape2Id: {
+          type: 'string',
+          description: 'ID of the second shape (alternative to shape2Description)'
+        }
+      },
+      required: []
+    }
+  },
+
+  // booleanIntersect: {
+  //   name: 'booleanIntersect',
+  //   description: 'Create a new shape from the intersection of two shapes (the overlapping volume).',
+  //   parameters: {
+  //     type: 'object',
+  //     properties: {
+  //       shape1Description: {
+  //         type: 'string',
+  //         description: 'Description of the first shape'
+  //       },
+  //       shape2Description: {
+  //         type: 'string',
+  //         description: 'Description of the second shape'
+  //       },
+  //       shape1Id: {
+  //         type: 'string',
+  //         description: 'ID of the first shape (alternative to shape1Description)'
+  //       },
+  //       shape2Id: {
+  //         type: 'string',
+  //         description: 'ID of the second shape (alternative to shape2Description)'
+  //       }
+  //     },
+  //     required: []
+  //   }
+  // }
+}
+
+// AI Canvas Agent API endpoint
+export function setupAIChatEndpoint(app, io) {
+  app.post('/api/ai/chat', async (req, res) => {
+    try {
+      const { message, canvasId, userId } = req.body
+
+      if (!message || !canvasId || !userId) {
+        return res.status(400).json({ error: 'Missing required fields: message, canvasId, userId' })
+      }
+
+      // Get canvas state for context
+      const { data: objects } = await supabase
+        .from('objects')
+        .select('*')
+        .eq('canvas_id', canvasId)
+
+      const canvasContext = objects ? objects.map(obj => {
+        // Build properties from individual columns
+        const properties = {
+          color: obj.color,
+          width: obj.width,
+          height: obj.height,
+          depth: obj.depth
+        }
+
+        // For text objects, extract text from geometry if it exists
+        if (obj.type === 'text' && obj.geometry) {
+          try {
+            const geometryData = JSON.parse(obj.geometry)
+            if (geometryData.text) {
+              properties.text = geometryData.text
+            }
+          } catch (e) {
+            // Ignore parsing errors
+          }
+        }
+
+        return {
+          id: obj.id,
+          type: obj.type,
+          position: { x: obj.position_x, y: obj.position_y, z: obj.position_z },
+          color: obj.color,
+          properties: properties
+        }
+      }) : []
+
+      // Create system prompt with canvas context
+      const systemPrompt = `You are an AI Canvas Agent that builds complex 2D layouts using only createShape calls. Understand patterns and apply them intelligently.
+
+CANVAS SYSTEM:
+- 50x50 unit canvas (-25 to +25 in X/Z)
+- For 2D layouts: use XY plane (y=0.05 for shapes, y=1 for text)
+- Text rotation: rotate 90 degrees forward (rotation_x: Math.PI/2) so text lies flat
+- Font sizes: 1-3 units for readability in 50x50 space
+
+INTELLIGENT 2D LAYOUTS:
+FORMS: Group input fields vertically, labels left of inputs, buttons at bottom
+- Background: large rectangle container
+- Inputs: smaller rectangles with light colors
+- Labels: text positioned near inputs
+- Buttons: colored rectangles with centered text
+- Space elements 2-3 units apart logically
+
+POSTERS/LAYOUTS: Use visual hierarchy - titles at top, content below, balanced spacing
+
+COLOR PATTERNS:
+- Backgrounds: white/gray (#ffffff, #f8f9fa)
+- Input fields: light gray (#f0f0f0, #e9ecef)
+- Buttons: blue/purple (#4f46e5, #007bff)
+- Text: black/dark gray (#000000, #333333)
+
+POSITIONING RULES:
+- Center layouts around x=0, use z-depth for layering
+- Text always at y=1, rotated flat for 2D layouts
+- Group related elements, maintain visual balance
+
+Current canvas (${canvasContext.length} shapes):
+${canvasContext.map(shape =>
+  `- ${shape.type} at (${Math.round(shape.position.x)}, ${Math.round(shape.position.y)}, ${Math.round(shape.position.z)}) - ID: ${shape.id}${shape.color ? ` - Color: ${shape.color}` : ""}${shape.properties?.text ? ` - Text: "${shape.properties.text}"` : ""}`
+).join("\n")}
+
+For complex requests, analyze the pattern and create multiple createShape calls. Apply logical spacing, appropriate colors, and flat text rotation for 2D layouts.`
+      // Call OpenAI with tools API (enables multiple parallel tool calls)
+      const completion = await openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: message }
+        ],
+        tools: Object.values(aiFunctions).map(func => ({
+          type: 'function',
+          function: func
+        })),
+        tool_choice: 'auto', // Allow multiple tool calls
+        max_completion_tokens: 4000,
+        temperature: 0.1
+      })
+
+      const response = completion.choices[0].message
+
+      // Process tool calls (modern API supports multiple parallel calls)
+      const actions = []
+      let responseMessage = response.content || 'I\'ve processed your request.'
+
+      // Handle tool calls (modern API) or fallback to function calls (legacy API)
+      const calls = response.tool_calls || []
+
+      // Fallback for legacy function_call API
+      if (!calls.length && response.function_call) {
+        calls.push({ function: response.function_call })
+      }
+
+      for (const call of calls) {
+        const functionName = call.function.name
+        const functionArgs = JSON.parse(call.function.arguments || '{}')
+
+        console.log("AI Tool Call:", functionName, functionArgs)
+
+        try {
+        // Execute the canvas function
+        const result = await executeCanvasFunction(functionName, functionArgs, canvasId, userId, io)
+
+          // Add successful actions to the response
+          if (result.actions) {
+            actions.push(...result.actions)
+          }
+
+          // Update response message if provided
+          if (result.message) {
+            responseMessage = result.message
+          }
+
+        } catch (error) {
+          console.error('Error executing canvas function:', error)
+          responseMessage = "I encountered an error while executing your request: " + error.message
+        }
+      }
+
+      res.json({
+        message: responseMessage,
+        actions: actions
+      })
+
+    } catch (error) {
+      console.error('AI Chat API Error:', error)
+      res.status(500).json({
+        error: 'Internal server error',
+        message: 'Sorry, I encountered an error processing your request.'
+      })
+    }
+  })
+}

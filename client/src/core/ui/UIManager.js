@@ -57,13 +57,47 @@ export class UIManager {
 
     if (onlineCountElement) {
       const userCount = this.app.onlineUsers.size;
-      const countText = userCount === 1 ? '1 user online' : `${userCount} users online`;
+      let countText;
+
+      // Show different messages based on connection status
+      if (!this.app.socketManager.isConnected) {
+        if (this.app.socketManager.socket?.connecting) {
+          countText = 'Connecting...';
+        } else if (this.app.socketManager.manualReconnectTimer && this.app.socketManager.hasEverConnected) {
+          countText = 'Reconnecting...';
+        } else {
+          countText = 'Disconnected';
+        }
+      } else {
+        countText = userCount === 1 ? '1 user online' : `${userCount} users online`;
+      }
+
       onlineCountElement.textContent = countText;
     }
 
     if (presenceIndicator) {
-      presenceIndicator.style.backgroundColor = this.app.socketManager.isConnected ? '#4caf50' : '#f44336';
+      let color = '#f44336'; // Default to red (disconnected)
+
+      if (this.app.socketManager.isConnected) {
+        color = '#4caf50'; // Green when connected
+      } else if (this.app.socketManager.socket?.connecting) {
+        color = '#ff9800'; // Orange when actively connecting
+      } else if (this.app.socketManager.manualReconnectTimer && this.app.socketManager.hasEverConnected) {
+        color = '#ff5722'; // Darker orange when manual reconnection timer is active (and we've connected before)
+      }
+
+      presenceIndicator.style.backgroundColor = color;
     }
+
+    // Debug logging for troubleshooting
+    console.log('Presence display update:', {
+      isConnected: this.app.socketManager.isConnected,
+      socketConnected: this.app.socketManager.socket?.connected,
+      socketConnecting: this.app.socketManager.socket?.connecting,
+      onlineUsers: this.app.onlineUsers.size,
+      reconnectAttempts: this.app.socketManager.reconnectAttempts,
+      hasManualTimer: !!this.app.socketManager.manualReconnectTimer
+    });
   }
 
   /**

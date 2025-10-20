@@ -106,6 +106,20 @@ export class App {
     this.socketEventHandler = new SocketEventHandler(this);
     this.eventHandler = new EventHandler(this);
 
+    // Set up socket disconnect handler to clear online users and start reconnection
+    socketManager.onDisconnect((reason) => {
+      console.log('Socket disconnected, clearing online users and starting reconnection:', reason);
+      this.onlineUsers.clear();
+      this.uiManager?.updatePresenceDisplay();
+      // The SocketManager already starts the timer on disconnect, but ensure UI updates
+    });
+
+    // Set up connection status change handler
+    socketManager.onConnectionStatusChange((status) => {
+      console.log('Connection status changed:', status);
+      this.uiManager?.updatePresenceDisplay();
+    });
+
     // Initialize AI Chat (after socketEventHandler so it can register)
     this.aiChat = new AIChat(this);
 
