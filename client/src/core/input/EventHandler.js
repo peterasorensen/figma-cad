@@ -475,6 +475,9 @@ export class EventHandler {
       }
       const deletedIds = this.app.shapeManager.deleteSelected();
 
+      // Ensure transform controls are detached from any deleted objects
+      this.app.transform.detachIfInvalid();
+
       // Broadcast deletion to other users
       if (socketManager.isConnected && this.app.currentCanvasId && deletedIds.length > 0) {
         deletedIds.forEach(id => {
@@ -932,7 +935,7 @@ export class EventHandler {
           }
 
           // Check data size limit (prevent huge geometries from breaking socket)
-          const MAX_GEOMETRY_SIZE = 1024 * 1024; // 1MB limit
+          const MAX_GEOMETRY_SIZE = 1024 * 1024 * 2; // 1MB limit
           if (geometrySize > MAX_GEOMETRY_SIZE) {
             console.error('Geometry data too large:', geometrySize, 'bytes (max:', MAX_GEOMETRY_SIZE, ')');
             this.app.uiManager.showNotification('Boolean result too complex - try simpler shapes', 'error');
@@ -993,6 +996,9 @@ export class EventHandler {
           this.app.uiManager.showNotification('Failed to sync changes with other users', 'error');
         }
       }
+
+      // Ensure transform controls are detached from any removed objects (cutting object is deleted)
+      this.app.transform.detachIfInvalid();
 
       // Hide the apply button
       this.hideApplyButton();

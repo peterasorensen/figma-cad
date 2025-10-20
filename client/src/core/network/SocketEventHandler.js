@@ -326,6 +326,11 @@ export class SocketEventHandler {
       console.log('🔴 Removed visual object:', data.id);
     }
 
+    // Ensure transform controls are detached if they were attached to the deleted object
+    if (this.app.transform) {
+      this.app.transform.detachIfInvalid();
+    }
+
     // Remove from tracking
     this.app.remoteObjects.delete(data.id);
   }

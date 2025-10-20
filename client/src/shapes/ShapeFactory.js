@@ -94,7 +94,7 @@ export class ShapeFactory {
   createSphere(x = 0, y = 1, z = 0, id = null, properties = {}) {
     const { radius, color } = properties;
     // Aggressive reduction for boolean performance (was 32x32, now 8x8)
-    const geometry = new THREE.SphereGeometry(radius, 8, 8);
+    const geometry = new THREE.SphereGeometry(radius, 16, 16);
     const material = new THREE.MeshStandardMaterial({
       color: color,
       roughness: 0.5,
@@ -117,7 +117,7 @@ export class ShapeFactory {
   createCylinder(x = 0, y = 1, z = 0, id = null, properties = {}) {
     const { radius, height, color } = properties;
     // Aggressive reduction for boolean performance (was 32, now 8)
-    const geometry = new THREE.CylinderGeometry(radius, radius, height, 8);
+    const geometry = new THREE.CylinderGeometry(radius, radius, height, 16);
     const material = new THREE.MeshStandardMaterial({
       color: color,
       roughness: 0.5,
@@ -164,7 +164,7 @@ export class ShapeFactory {
   createCircle(x = 0, z = 0, id = null, properties = {}) {
     const { radius, color } = properties;
     // Aggressive reduction for boolean performance (was 32, now 12)
-    const geometry = new THREE.CylinderGeometry(radius, radius, 0.1, 12);
+    const geometry = new THREE.CylinderGeometry(radius, radius, 0.1, 16);
     const material = new THREE.MeshStandardMaterial({
       color: color,
       roughness: 0.5,

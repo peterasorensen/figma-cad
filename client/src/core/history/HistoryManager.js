@@ -446,6 +446,11 @@ export class HistoryManager {
             shapeManager.shapes.delete(shapeData.id);
             console.log(`Deleted shape ${shapeData.id} from shapes map`);
 
+            // Ensure transform controls are detached if they were attached to the deleted shape
+            if (shapeManager.app && shapeManager.app.transform) {
+              shapeManager.app.transform.detachIfInvalid();
+            }
+
             // Broadcast the inverse (delete) to other users
             if (socketManager && socketManager.isConnected) {
               console.log(`Broadcasting delete for shape ${shapeData.id}`);
@@ -537,6 +542,11 @@ export class HistoryManager {
           cuttingShape.dispose();
           shapeManager.shapes.delete(action.cuttingShape.id);
 
+          // Ensure transform controls are detached if they were attached to the deleted cutting shape
+          if (shapeManager.app && shapeManager.app.transform) {
+            shapeManager.app.transform.detachIfInvalid();
+          }
+
           // Broadcast the deletion
           if (socketManager && socketManager.isConnected) {
             socketManager.deleteObject(action.cuttingShape.id);
@@ -599,6 +609,11 @@ export class HistoryManager {
             existingShape.dispose();
             shapeManager.shapes.delete(shapeData.id);
             console.warn(`Removed existing shape ${shapeData.id} before recreating`);
+
+            // Ensure transform controls are detached if they were attached to the removed shape
+            if (shapeManager.app && shapeManager.app.transform) {
+              shapeManager.app.transform.detachIfInvalid();
+            }
           }
 
           console.log(`Recreating shape ${shapeData.id} of type ${shapeData.type} at position`, shapeData.after.position);
@@ -647,6 +662,11 @@ export class HistoryManager {
             shapeManager.scene.remove(shape.mesh);
             shape.dispose();
             shapeManager.shapes.delete(shapeData.id);
+
+            // Ensure transform controls are detached if they were attached to the deleted shape
+            if (shapeManager.app && shapeManager.app.transform) {
+              shapeManager.app.transform.detachIfInvalid();
+            }
 
             // Broadcast the forward (delete) to other users
             if (socketManager && socketManager.isConnected) {

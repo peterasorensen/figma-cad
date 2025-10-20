@@ -238,6 +238,30 @@ export class Transform {
   }
 
   /**
+   * Check if the attached object is still valid (part of the scene graph)
+   */
+  isAttachedObjectValid() {
+    if (!this.attachedObject) {
+      return false;
+    }
+
+    // Check if the object has a parent (is in the scene graph)
+    return this.attachedObject.parent !== null;
+  }
+
+  /**
+   * Detach if the attached object is no longer valid
+   */
+  detachIfInvalid() {
+    if (!this.isAttachedObjectValid()) {
+      console.log('Detaching invalid transform controls');
+      this.detach();
+      return true;
+    }
+    return false;
+  }
+
+  /**
    * Set callback for object changes
    */
   setChangeCallback(callback) {
