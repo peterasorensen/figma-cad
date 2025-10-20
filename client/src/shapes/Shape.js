@@ -25,12 +25,201 @@ export class Shape {
 
     // Visual feedback for selection
     if (selected) {
-      // Add outline or change appearance
+      // Add yellow wireframe outline
+      this.addSelectionOutline();
       this.mesh.material.emissive = new THREE.Color(0x444444);
       this.mesh.material.emissiveIntensity = 0.3;
     } else {
+      // Remove selection outline
+      this.removeSelectionOutline();
       this.mesh.material.emissive = new THREE.Color(0x000000);
       this.mesh.material.emissiveIntensity = 0;
+      // Remove any transform indicators
+      this.removeTransformIndicators();
+    }
+  }
+
+  /**
+   * Add visual transform indicators (arrows) to show this object is transformable
+   */
+  addTransformIndicators(mode = 'translate') {
+    this.removeTransformIndicators();
+
+    // Create simple arrow indicators based on mode
+    const indicatorSize = 0.5;
+    const indicatorColor = 0x5a8fd6; // Same color as transform controls
+
+    if (mode === 'translate') {
+      // Add translation arrows (X, Y, Z axes)
+      this.createAxisArrow('x', indicatorSize, indicatorColor);
+      this.createAxisArrow('y', indicatorSize, indicatorColor);
+      this.createAxisArrow('z', indicatorSize, indicatorColor);
+    } else if (mode === 'rotate') {
+      // Add rotation rings
+      this.createRotationRing('x', indicatorSize, indicatorColor);
+      this.createRotationRing('y', indicatorSize, indicatorColor);
+      this.createRotationRing('z', indicatorSize, indicatorColor);
+    } else if (mode === 'resize') {
+      // Add scale handles
+      this.createScaleHandle('x', indicatorSize, indicatorColor);
+      this.createScaleHandle('y', indicatorSize, indicatorColor);
+      this.createScaleHandle('z', indicatorSize, indicatorColor);
+    }
+  }
+
+  /**
+   * Create a simple arrow for translation mode
+   */
+  createAxisArrow(axis, size, color) {
+    const geometry = new THREE.ConeGeometry(0.05, 0.2, 8);
+    const material = new THREE.MeshBasicMaterial({ color: color });
+    const arrow = new THREE.Mesh(geometry, material);
+
+    // Position based on axis
+    const offset = size * 0.8;
+    switch (axis) {
+      case 'x':
+        arrow.position.set(offset, 0, 0);
+        arrow.rotation.z = -Math.PI / 2;
+        break;
+      case 'y':
+        arrow.position.set(0, offset, 0);
+        break;
+      case 'z':
+        arrow.position.set(0, 0, offset);
+        arrow.rotation.x = Math.PI / 2;
+        break;
+    }
+
+    // Disable raycasting on indicators
+    arrow.raycast = () => {};
+
+    this.mesh.add(arrow);
+    this.transformIndicators = this.transformIndicators || [];
+    this.transformIndicators.push(arrow);
+  }
+
+  /**
+   * Create a rotation ring indicator
+   */
+  createRotationRing(axis, size, color) {
+    const geometry = new THREE.RingGeometry(size * 0.8, size, 16);
+    const material = new THREE.MeshBasicMaterial({
+      color: color,
+      side: THREE.DoubleSide,
+      transparent: true,
+      opacity: 0.7
+    });
+    const ring = new THREE.Mesh(geometry, material);
+
+    // Orient based on axis
+    switch (axis) {
+      case 'x':
+        ring.rotation.y = Math.PI / 2;
+        break;
+      case 'y':
+        ring.rotation.x = Math.PI / 2;
+        break;
+      case 'z':
+        // Default orientation
+        break;
+    }
+
+    // Disable raycasting on indicators
+    ring.raycast = () => {};
+
+    this.mesh.add(ring);
+    this.transformIndicators = this.transformIndicators || [];
+    this.transformIndicators.push(ring);
+  }
+
+  /**
+   * Create a scale handle indicator
+   */
+  createScaleHandle(axis, size, color) {
+    const geometry = new THREE.BoxGeometry(0.1, 0.1, 0.1);
+    const material = new THREE.MeshBasicMaterial({ color: color });
+    const handle = new THREE.Mesh(geometry, material);
+
+    // Position based on axis
+    const offset = size * 0.8;
+    switch (axis) {
+      case 'x':
+        handle.position.set(offset, 0, 0);
+        break;
+      case 'y':
+        handle.position.set(0, offset, 0);
+        break;
+      case 'z':
+        handle.position.set(0, 0, offset);
+        break;
+    }
+
+    // Disable raycasting on indicators
+    handle.raycast = () => {};
+
+    this.mesh.add(handle);
+    this.transformIndicators = this.transformIndicators || [];
+    this.transformIndicators.push(handle);
+  }
+
+  /**
+   * Remove transform indicators
+   */
+  removeTransformIndicators() {
+    if (this.transformIndicators) {
+      this.transformIndicators.forEach(indicator => {
+        if (indicator.parent) {
+          indicator.parent.remove(indicator);
+        }
+      });
+      this.transformIndicators = [];
+    }
+  }
+
+  /**
+   * Add yellow wireframe outline for selection
+   */
+  addSelectionOutline() {
+    // Remove existing outline if any
+    this.removeSelectionOutline();
+
+    // Create wireframe geometry from the shape's geometry
+    const wireframeGeometry = new THREE.WireframeGeometry(this.mesh.geometry);
+
+    // Create yellow wireframe material - make it more visible
+    const wireframeMaterial = new THREE.LineBasicMaterial({
+      color: 0xffff00, // Yellow color
+      linewidth: 3, // Thicker lines
+      transparent: true,
+      opacity: 0.9 // More opaque
+    });
+
+    // Create the wireframe mesh
+    this.selectionOutline = new THREE.LineSegments(wireframeGeometry, wireframeMaterial);
+
+    // Disable raycasting on the outline so it doesn't interfere with selection
+    this.selectionOutline.raycast = () => {};
+
+    // Add to the mesh so it follows transforms automatically
+    this.mesh.add(this.selectionOutline);
+  }
+
+  /**
+   * Remove selection outline
+   */
+  removeSelectionOutline() {
+    if (this.selectionOutline) {
+      if (this.selectionOutline.parent) {
+        this.selectionOutline.parent.remove(this.selectionOutline);
+      }
+      if (this.selectionOutline.geometry) {
+        this.selectionOutline.geometry.dispose();
+      }
+      if (this.selectionOutline.material) {
+        this.selectionOutline.material.dispose();
+      }
+      this.selectionOutline = null;
     }
   }
 
@@ -254,6 +443,12 @@ export class Shape {
    * Dispose shape and free resources
    */
   dispose() {
+    // Clean up selection outline
+    this.removeSelectionOutline();
+
+    // Clean up transform indicators
+    this.removeTransformIndicators();
+
     if (this.mesh.geometry) {
       this.mesh.geometry.dispose();
     }

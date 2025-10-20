@@ -670,7 +670,6 @@ export class EventHandler {
     const shapes = this.app.shapeManager.getAllShapes();
     const selectedShapes = [];
 
-    console.log(`Checking ${shapes.length} shapes for selection in rectangle: (${canvasLeft.toFixed(1)}, ${canvasTop.toFixed(1)}) to (${canvasRight.toFixed(1)}, ${canvasBottom.toFixed(1)})`);
 
     shapes.forEach(shape => {
       const mesh = shape.mesh;
@@ -687,14 +686,11 @@ export class EventHandler {
       const canvasX = (screenPos.x + 1) * canvasRect.width / 2;
       const canvasY = (-screenPos.y + 1) * canvasRect.height / 2;
 
-      // Debug log for each shape
-      console.log(`Shape ${shape.id}: world(${worldPosition.x.toFixed(2)}, ${worldPosition.y.toFixed(2)}, ${worldPosition.z.toFixed(2)}) -> ndc(${screenPos.x.toFixed(3)}, ${screenPos.y.toFixed(3)}) -> canvas(${canvasX.toFixed(1)}, ${canvasY.toFixed(1)})`);
-
       // Check if the shape is within the selection rectangle
+      // Note: canvasY is from top (0) to bottom (height), canvasTop is smaller Y, canvasBottom is larger Y
       if (canvasX >= canvasLeft && canvasX <= canvasRight &&
           canvasY >= canvasTop && canvasY <= canvasBottom) {
         selectedShapes.push(shape);
-        console.log(`✓ Selected shape ${shape.id} at canvas coords (${canvasX.toFixed(1)}, ${canvasY.toFixed(1)})`);
       }
     });
 
@@ -704,15 +700,30 @@ export class EventHandler {
       this.app.shapeManager.selectShape(shape.id, true);
     });
 
-    // Attach transform controls to the last selected shape (if any)
+    // Handle transform controls for multiple selections
     if (selectedShapes.length > 0) {
-      const lastShape = selectedShapes[selectedShapes.length - 1];
-      this.app.transform.attach(lastShape.mesh);
+      if (selectedShapes.length === 1) {
+        // Single selection - attach to the shape
+        const shape = selectedShapes[0];
+        this.app.transform.attach(shape.mesh);
 
-      // Show object controls above the selected object
-      if (this.app.objectControls) {
-        this.app.objectControls.show(lastShape.mesh, lastShape);
-        this.app.objectControls.updateButtonStates(this.app.transform.getMode());
+        // Show object controls above the selected object
+        if (this.app.objectControls) {
+          this.app.objectControls.show(shape.mesh, shape);
+          this.app.objectControls.updateButtonStates(this.app.transform.getMode());
+        }
+      } else {
+        // Multiple selection - attach group transform controls
+        const allMeshes = selectedShapes.map(shape => shape.mesh);
+        this.app.transform.attachMultiple(allMeshes);
+
+        // Show object controls for the primary object
+        if (this.app.objectControls) {
+          this.app.objectControls.show(selectedShapes[0].mesh, selectedShapes[0]);
+          this.app.objectControls.updateButtonStates(this.app.transform.getMode());
+        }
+
+        console.log(`Multi-selected ${selectedShapes.length} shapes with group controls`);
       }
     } else {
       // No shapes selected, detach transform controls

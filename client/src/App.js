@@ -466,6 +466,7 @@ export class App {
   handleDragEnd(object) {
     // If we were in resize mode, bake the scale into geometry
     if (this.transform && this.transform.getMode() === 'resize') {
+      // Handle primary object
       const shape = this.shapeManager.findShapeByMesh(object);
       if (shape) {
         // Capture the scale delta BEFORE baking (for undo/redo)
@@ -503,6 +504,49 @@ export class App {
           socketManager.updateObject(shape.id, objectData);
           console.log('📤 Broadcasted resize with baked geometry:', shape.id);
         }
+      }
+
+      // Handle multi-selected objects
+      if (this.transform.multiSelectObjects && this.transform.multiSelectObjects.length > 0) {
+        this.transform.multiSelectObjects.forEach(multiObj => {
+          const multiShape = this.shapeManager.findShapeByMesh(multiObj);
+          if (multiShape) {
+            // Capture scale delta for history
+            const multiScaleDelta = {
+              x: multiObj.scale.x,
+              y: multiObj.scale.y,
+              z: multiObj.scale.z
+            };
+
+            if (this.historyManager) {
+              this.historyManager.captureScaleDelta(multiShape.id, multiScaleDelta);
+            }
+
+            // Bake the scale for multi-selected object
+            this.shapeManager.bakeShapeScale(multiShape.id);
+
+            // Broadcast updates for multi-selected objects
+            if (socketManager.isConnected && this.currentCanvasId) {
+              const multiObjectData = {
+                id: multiShape.id,
+                position_x: multiObj.position.x,
+                position_y: multiObj.position.y,
+                position_z: multiObj.position.z,
+                rotation_x: multiObj.rotation.x,
+                rotation_y: multiObj.rotation.y,
+                rotation_z: multiObj.rotation.z,
+                scale_x: 1,
+                scale_y: 1,
+                scale_z: 1,
+                color: multiShape.properties.color || '#ffffff',
+                geometry: multiShape.serializeGeometry()
+              };
+
+              socketManager.updateObject(multiShape.id, multiObjectData);
+              console.log('📤 Broadcasted multi-resize with baked geometry:', multiShape.id);
+            }
+          }
+        });
       }
     }
 
