@@ -46,6 +46,12 @@ export class SnapManager {
   snapToGrid(position) {
     if (!this.enabled) return position;
 
+    // Prevent division by zero
+    if (this.gridSize === 0 || isNaN(this.gridSize)) {
+      console.warn('SnapManager: gridSize is invalid:', this.gridSize);
+      return position;
+    }
+
     return {
       x: Math.round(position.x / this.gridSize) * this.gridSize,
       y: Math.round(position.y / this.gridSize) * this.gridSize,

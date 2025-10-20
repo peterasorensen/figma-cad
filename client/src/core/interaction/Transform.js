@@ -26,6 +26,28 @@ export class Transform {
     this.controls = new TransformControls(this.camera, this.domElement);
     this.controls.setMode(this.currentMode);
 
+    // Disable built-in snapping to prevent conflicts with our custom snapping
+    if (this.controls.setTranslationSnap) {
+      this.controls.setTranslationSnap(null);
+    }
+    if (this.controls.setRotationSnap) {
+      this.controls.setRotationSnap(null);
+    }
+    if (this.controls.setScaleSnap) {
+      this.controls.setScaleSnap(null);
+    }
+
+    // Alternative: try setting to 0
+    if (this.controls.translationSnap !== undefined) {
+      this.controls.translationSnap = null;
+    }
+    if (this.controls.rotationSnap !== undefined) {
+      this.controls.rotationSnap = null;
+    }
+    if (this.controls.scaleSnap !== undefined) {
+      this.controls.scaleSnap = null;
+    }
+
     // Disable orbit controls when dragging
     this.controls.addEventListener('dragging-changed', (event) => {
       this.isDragging = event.value;
@@ -62,7 +84,12 @@ export class Transform {
       this.controls.attach(object);
       this.attachedObject = object;
       this.multiSelectObjects = [];
-      this.multiSelectInitialStates = [];
+      // Capture initial state for single object
+      this.multiSelectInitialStates = [{
+        position: object.position.clone(),
+        rotation: object.rotation.clone(),
+        scale: object.scale.clone()
+      }];
       this.controls.visible = true;
     }
   }
@@ -275,13 +302,13 @@ export class Transform {
         // Apply snapping if enabled
         if (this.snapManager && this.snapManager.isEnabled()) {
           finalPosition = this.snapManager.snapPosition(finalPosition, primaryShapeId);
+        }
 
-          // Only update if the position actually changed (to avoid infinite loops)
-          if (!this.snapManager.positionsEqual(this.attachedObject.position, finalPosition)) {
-            this.attachedObject.position.set(finalPosition.x, finalPosition.y, finalPosition.z);
-            this.controls.object.position.copy(this.attachedObject.position);
-            needsUpdate = true;
-          }
+        // Only update if the position actually changed (to avoid infinite loops)
+        if (!this.snapManager.positionsEqual(this.attachedObject.position, finalPosition)) {
+          this.attachedObject.position.set(finalPosition.x, finalPosition.y, finalPosition.z);
+          this.controls.object.position.copy(this.attachedObject.position);
+          needsUpdate = true;
         }
 
         // Apply the same translation to all multi-selected objects
