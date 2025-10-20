@@ -284,6 +284,9 @@ export class Shape {
   serializeGeometry() {
     if (!this.mesh || !this.mesh.geometry) return null;
 
+    // Don't serialize geometry for text objects - they use dynamic text geometry
+    if (this.type === 'text') return null;
+
     const geometry = this.mesh.geometry;
     const serialized = {
       type: geometry.type, // 'BufferGeometry'
@@ -397,6 +400,12 @@ export class Shape {
    */
   applySerializedGeometry(serializedGeometry) {
     if (!serializedGeometry || !this.mesh) return;
+
+    // Skip geometry application for text objects - they use dynamic text geometry
+    if (this.type === 'text') {
+      console.log(`Skipped geometry application for text shape ${this.id} - using dynamic text geometry`);
+      return;
+    }
 
     // Dispose old geometry
     if (this.mesh.geometry) {

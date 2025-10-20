@@ -46,8 +46,18 @@ export class ShapeFactory {
       geometry.computeBoundingSphere();
     }
 
+    // Ensure color is a valid THREE.Color input
+    let colorValue = color;
+    if (typeof colorValue === 'string' && colorValue.startsWith('#')) {
+      colorValue = colorValue;
+    } else if (typeof colorValue === 'number') {
+      colorValue = colorValue;
+    } else {
+      colorValue = 0x5a8fd6; // default
+    }
+
     const material = new THREE.MeshStandardMaterial({
-      color: color,
+      color: colorValue,
       roughness: 0.5,
       metalness: 0.3
     });

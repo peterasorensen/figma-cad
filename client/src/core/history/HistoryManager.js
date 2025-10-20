@@ -9,6 +9,38 @@ export class HistoryManager {
     this.maxHistorySize = 20;
     this.isRestoring = false; // Flag to prevent history tracking during restoration
     this.pendingUpdate = null; // For capturing before/after during drag operations
+
+    // Listen for text editing events
+    this.setupEventListeners();
+  }
+
+  setupEventListeners() {
+    document.addEventListener('textEdited', (event) => {
+      this.handleTextEdit(event.detail);
+    });
+  }
+
+  /**
+   * Handle text editing operations for undo/redo
+   */
+  handleTextEdit(detail) {
+    if (this.isRestoring) return; // Don't track during restoration
+
+    const action = {
+      type: 'textEdit',
+      timestamp: Date.now(),
+      shapeId: detail.shapeId,
+      before: {
+        text: detail.oldText,
+        fontSize: detail.oldFontSize
+      },
+      after: {
+        text: detail.newText,
+        fontSize: detail.newFontSize
+      }
+    };
+
+    this.addAction(action);
   }
 
   /**
@@ -385,6 +417,31 @@ export class HistoryManager {
         }
         break;
 
+      case 'textEdit':
+        // For text edit actions, restore to before state
+        console.log(`Undoing text edit for shape ${action.shapeId}`);
+
+        const textShape = shapeManager.shapes.get(action.shapeId);
+        if (textShape) {
+          // Restore text and font size
+          if (action.before.text !== textShape.properties.text && textShape.setText) {
+            textShape.setText(action.before.text);
+          }
+          if (action.before.fontSize !== textShape.properties.fontSize && textShape.setFontSize) {
+            textShape.setFontSize(action.before.fontSize);
+          }
+
+          // Broadcast the text restoration to other users
+          if (socketManager && socketManager.isConnected) {
+            const updateData = {
+              text_content: action.before.text,
+              font_size: action.before.fontSize
+            };
+            socketManager.updateObject(action.shapeId, updateData);
+          }
+        }
+        break;
+
       case 'update':
         // For update actions, set shapes to their before state
         for (const shapeData of action.shapes) {
@@ -427,6 +484,13 @@ export class HistoryManager {
                 // Include serialized geometry if resize occurred
                 geometry: shapeData.scaleDelta ? shape.serializeGeometry() : undefined
               };
+
+              // Add text-specific properties for text objects
+              if (shape.type === 'text') {
+                updateData.text_content = shapeData.before.properties.text || 'Text';
+                updateData.font_size = shapeData.before.properties.fontSize || 1;
+              }
+
               socketManager.updateObject(shapeData.id, updateData);
             }
           }
@@ -485,6 +549,12 @@ export class HistoryManager {
             geometry: shapeData.before.geometry // Restore from tombstone
           };
 
+          // Add text-specific properties for text objects
+          if (shapeData.type === 'text') {
+            restoreData.text_content = shapeData.before.properties.text || 'Text';
+            restoreData.font_size = shapeData.before.properties.fontSize || 1;
+          }
+
           const shape = shapeManager.createShapeFromData(restoreData);
           if (shape) {
             // Ensure shape is added to scene
@@ -533,6 +603,13 @@ export class HistoryManager {
                   depth: shapeData.before.properties.depth,
                   geometry: shapeData.before.geometry
                 };
+
+                // Add text-specific properties for text objects
+                if (shape.type === 'text') {
+                  restoreData.text_content = shapeData.before.properties.text || 'Text';
+                  restoreData.font_size = shapeData.before.properties.fontSize || 1;
+                }
+
                 socketManager.updateObject(shapeData.id, restoreData);
               }
             }
@@ -553,6 +630,12 @@ export class HistoryManager {
               depth: shapeData.before.properties.depth,
               geometry: shapeData.before.geometry
             };
+
+            // Add text-specific properties for text objects
+            if (shapeData.type === 'text') {
+              restoreData.text_content = shapeData.before.properties.text || 'Text';
+              restoreData.font_size = shapeData.before.properties.fontSize || 1;
+            }
 
             const shape = shapeManager.createShapeFromData(restoreData);
             if (shape) {
@@ -674,6 +757,13 @@ export class HistoryManager {
                 // Include serialized geometry if resize occurred
                 geometry: shapeData.scaleDelta ? shape.serializeGeometry() : undefined
               };
+
+              // Add text-specific properties for text objects
+              if (shape.type === 'text') {
+                updateData.text_content = shapeData.after.properties.text || 'Text';
+                updateData.font_size = shapeData.after.properties.fontSize || 1;
+              }
+
               socketManager.updateObject(shapeData.id, updateData);
             }
           }
@@ -717,6 +807,12 @@ export class HistoryManager {
             depth: shapeData.after.properties.depth,
             geometry: shapeData.after.geometry // Restore from snapshot
           };
+
+          // Add text-specific properties for text objects
+          if (shapeData.type === 'text') {
+            restoreData.text_content = shapeData.after.properties.text || 'Text';
+            restoreData.font_size = shapeData.after.properties.fontSize || 1;
+          }
 
           const shape = shapeManager.createShapeFromData(restoreData);
           if (shape) {
@@ -794,6 +890,13 @@ export class HistoryManager {
                   depth: shapeData.after.properties.depth,
                   geometry: shapeData.after.geometry
                 };
+
+                // Add text-specific properties for text objects
+                if (shape.type === 'text') {
+                  restoreData.text_content = shapeData.after.properties.text || 'Text';
+                  restoreData.font_size = shapeData.after.properties.fontSize || 1;
+                }
+
                 socketManager.updateObject(shapeData.id, restoreData);
               }
             }
@@ -814,6 +917,12 @@ export class HistoryManager {
               depth: shapeData.after.properties.depth,
               geometry: shapeData.after.geometry
             };
+
+            // Add text-specific properties for text objects
+            if (shapeData.type === 'text') {
+              restoreData.text_content = shapeData.after.properties.text || 'Text';
+              restoreData.font_size = shapeData.after.properties.fontSize || 1;
+            }
 
             const shape = shapeManager.createShapeFromData(restoreData);
             if (shape) {

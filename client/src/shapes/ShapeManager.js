@@ -47,7 +47,8 @@ export class ShapeManager {
     };
 
     // If geometry is provided, create shape directly from it (remote sync path)
-    if (geometry) {
+    // Note: Text shapes cannot be created from geometry, they need text content
+    if (geometry && type !== 'text') {
       shape = this.factory.createFromGeometry(geometry, x, y, z, id, props, type);
     } else {
       // Otherwise create from type (local creation path)
@@ -104,6 +105,15 @@ export class ShapeManager {
           transform.rotation.x || 0,
           transform.rotation.y || 0,
           transform.rotation.z || 0
+        );
+      }
+
+      // Apply scale only for text objects (persisted in database)
+      if (transform && transform.scale && type === 'text') {
+        shape.mesh.scale.set(
+          transform.scale.x || 1,
+          transform.scale.y || 1,
+          transform.scale.z || 1
         );
       }
 
@@ -367,6 +377,15 @@ export class ShapeManager {
         }
       };
 
+      // Only text objects persist scale in database
+      if (data.type === 'text') {
+        transform.scale = {
+          x: data.scale_x || 1,
+          y: data.scale_y || 1,
+          z: data.scale_z || 1
+        };
+      }
+
       // Build properties from database columns
       const properties = {
         color: data.color || '#ffffff',
@@ -375,17 +394,11 @@ export class ShapeManager {
         depth: data.depth
       };
 
-      // For text shapes, extract text from geometry if it exists
-      if (data.type === 'text' && data.geometry) {
-        try {
-          const geometryData = JSON.parse(data.geometry);
-          if (geometryData.text) {
-            properties.text = geometryData.text;
-            properties.fontSize = geometryData.fontSize || 16;
-          }
-        } catch (e) {
-          console.warn('Failed to parse text geometry data:', e);
-        }
+      // For text shapes, get text properties from database columns
+      if (data.type === 'text') {
+        properties.text = data.text_content || 'Text';
+        properties.fontSize = data.font_size || 1;
+        properties.fontDepth = 0.1; // Default value since not stored in DB
       }
 
       let shape;
@@ -414,8 +427,13 @@ export class ShapeManager {
 
           // For AI-created shapes, we need to serialize and store the geometry
           // so it persists in the database for future sessions
+          // For text objects, we need to update text properties
           setTimeout(() => {
-            this.updateShapeGeometryInDatabase(shape);
+            if (data.type === 'text') {
+              this.updateTextPropertiesInDatabase(shape);
+            } else {
+              this.updateShapeGeometryInDatabase(shape);
+            }
           }, 100); // Small delay to ensure shape is fully initialized
         }
       }
@@ -454,6 +472,31 @@ export class ShapeManager {
       });
     } catch (error) {
       console.error('Error updating shape geometry in database:', error);
+    }
+  }
+
+  /**
+   * Update text properties in database (for text objects that need property persistence)
+   */
+  updateTextPropertiesInDatabase(shape) {
+    if (!shape || shape.type !== 'text') return;
+
+    try {
+      // Send text properties to update the database record
+      const updateData = {
+        text_content: shape.properties.text || 'Text',
+        font_size: shape.properties.fontSize || 1
+      };
+
+      // Import socketManager dynamically to avoid circular imports
+      import('../core/network/SocketManager.js').then(({ socketManager }) => {
+        if (socketManager.isConnected) {
+          socketManager.updateObject(shape.id, updateData);
+          console.log('📤 Updated text properties in database for text shape:', shape.id);
+        }
+      });
+    } catch (error) {
+      console.error('Error updating text properties in database:', error);
     }
   }
 

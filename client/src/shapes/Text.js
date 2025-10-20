@@ -9,19 +9,34 @@ import { Shape } from './Shape.js';
  */
 export class TextShape extends Shape {
   constructor(text = 'Text', x = 0, y = 1, z = 0, id = null, properties = {}) {
+    // Ensure color is a valid THREE.Color input
+    let colorValue = properties.color;
+    if (typeof colorValue === 'string' && colorValue.startsWith('#')) {
+      colorValue = colorValue;
+    } else if (typeof colorValue === 'number') {
+      colorValue = colorValue;
+    } else {
+      colorValue = 0x5a8fd6; // default
+    }
+
     // Create a temporary mesh first, will be replaced with text geometry
     const tempGeometry = new THREE.BoxGeometry(1, 1, 1);
-    const tempMaterial = new THREE.MeshStandardMaterial({ color: properties.color || 0x5a8fd6 });
+    const tempMaterial = new THREE.MeshStandardMaterial({ color: colorValue });
     const tempMesh = new THREE.Mesh(tempGeometry, tempMaterial);
+    tempMesh.position.set(x, y, z); // Position temp mesh correctly
 
-    // Call parent constructor
-    super('text', tempMesh, properties, id);
+    // Call parent constructor with color converted to hex string
+    const processedProperties = {
+      ...properties,
+      color: '#' + tempMaterial.color.getHexString()
+    };
+    super('text', tempMesh, processedProperties, id);
 
     // Store text properties
     this.text = text;
     this.fontSize = properties.fontSize || 1;
     this.fontDepth = properties.fontDepth || 0.1;
-    this.color = properties.color || 0x5a8fd6;
+    this.color = colorValue;
 
     // Load font and create text geometry
     this.loadFontAndCreateText(x, y, z);
@@ -60,7 +75,7 @@ export class TextShape extends Shape {
         bevelEnabled: false
       });
 
-      // Center the text geometry
+      // Center text geometry on all axes for consistent positioning
       textGeometry.computeBoundingBox();
       const centerOffsetX = -0.5 * (textGeometry.boundingBox.max.x - textGeometry.boundingBox.min.x);
       const centerOffsetY = -0.5 * (textGeometry.boundingBox.max.y - textGeometry.boundingBox.min.y);

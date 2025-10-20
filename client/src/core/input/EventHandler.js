@@ -551,13 +551,21 @@ export class EventHandler {
         rotation_y: shape.mesh.rotation.y,
         rotation_z: shape.mesh.rotation.z,
         color: shape.properties.color || '#ffffff',
-        geometry: shape.serializeGeometry(),
         canvas_id: this.app.currentCanvasId,
         created_by: this.app.auth.userId
       };
 
+      // Add text-specific properties for text shapes
+      if (shape.type === 'text') {
+        objectData.text_content = shape.properties.text || 'Text';
+        objectData.font_size = shape.properties.fontSize || 1;
+        objectData.geometry = null; // Text shapes don't use geometry serialization
+      } else {
+        objectData.geometry = shape.serializeGeometry();
+      }
+
       socketManager.createObject(objectData);
-      console.log('📤 Broadcasted object creation with geometry:', objectData.id);
+      console.log('📤 Broadcasted object creation:', shape.type, objectData.id);
     }
   }
 
