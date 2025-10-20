@@ -341,13 +341,27 @@ export class EventHandler {
         const addToSelection = event.shiftKey;
         this.app.shapeManager.selectShape(shape.id, addToSelection);
 
-        // Attach transform controls to the selected shape (last selected)
-        this.app.transform.attach(shape.mesh);
+        // Determine current selection and attach appropriate controls
+        const selectedShapes = this.app.shapeManager.getSelectedShapes();
+        if (selectedShapes.length > 1) {
+          // Attach group controls to multiple selections
+          const allMeshes = selectedShapes.map(s => s.mesh);
+          this.app.transform.attachMultiple(allMeshes);
 
-        // Show object controls above the selected object
-        if (this.app.objectControls) {
-          this.app.objectControls.show(shape.mesh, shape);
-          this.app.objectControls.updateButtonStates(this.app.transform.getMode());
+          // Show object controls at centroid of selection
+          if (this.app.objectControls) {
+            this.app.objectControls.show(allMeshes, null);
+            this.app.objectControls.updateButtonStates(this.app.transform.getMode());
+          }
+        } else {
+          // Single selection - attach to the shape
+          this.app.transform.attach(shape.mesh);
+
+          // Show object controls above the selected object
+          if (this.app.objectControls) {
+            this.app.objectControls.show(shape.mesh, shape);
+            this.app.objectControls.updateButtonStates(this.app.transform.getMode());
+          }
         }
       }
     } else {
@@ -598,6 +612,9 @@ export class EventHandler {
    * Handle canvas mouse move for selection rectangle
    */
   handleCanvasMouseMove(event) {
+    // Don't handle multi-select mouse moves if we're dragging transform controls
+    if (this.app.transform && this.app.transform.isDraggingNow()) return;
+
     if (!this.isSelecting || !this.selectionRect || this.app.currentTool !== 'multiselect') {
       return;
     }
@@ -735,9 +752,9 @@ export class EventHandler {
         const allMeshes = selectedShapes.map(shape => shape.mesh);
         this.app.transform.attachMultiple(allMeshes);
 
-        // Show object controls for the primary object
+        // Show object controls at centroid of selection
         if (this.app.objectControls) {
-          this.app.objectControls.show(selectedShapes[0].mesh, selectedShapes[0]);
+          this.app.objectControls.show(allMeshes, null);
           this.app.objectControls.updateButtonStates(this.app.transform.getMode());
         }
 

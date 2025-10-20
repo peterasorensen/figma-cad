@@ -91,6 +91,8 @@ export class App {
       this.controls.controls, // Pass the actual OrbitControls instance
       this.snapManager
     );
+    // Provide app reference so Transform can coordinate helpers across shapes
+    this.transform.app = this;
     this.objectControls = new ObjectControls(this.scene.getCamera(), this.transform);
     this.historyManager = new HistoryManager();
     this.cursorManager = new CursorManager(this.scene, this.scene.getCamera());
@@ -380,7 +382,13 @@ export class App {
 
     // Update object controls position if visible
     if (this.objectControls && this.transform && this.transform.isAttached()) {
-      this.objectControls.update(this.transform.attachedObject);
+      const hasMulti = this.transform.multiSelectObjects && this.transform.multiSelectObjects.length > 0;
+      if (hasMulti) {
+        const all = [this.transform.attachedObject, ...this.transform.multiSelectObjects];
+        this.objectControls.update(all);
+      } else {
+        this.objectControls.update(this.transform.attachedObject);
+      }
     }
 
     // Update cursor position for remote users (throttled)
@@ -428,28 +436,32 @@ export class App {
     }
     this.lastObjectUpdate = now;
 
-    // Find the shape that corresponds to this object
-    if (this.shapeManager) {
-      const shape = this.shapeManager.findShapeByMesh(object);
-      if (shape) {
-        // Broadcast the object update to other users (during dragging)
-        if (socketManager.isConnected && this.currentCanvasId) {
-          const objectData = {
-            id: shape.id,
-            position_x: object.position.x,
-            position_y: object.position.y,
-            position_z: object.position.z,
-            rotation_x: object.rotation.x,
-            rotation_y: object.rotation.y,
-            rotation_z: object.rotation.z,
-            // Include scale for resize mode (visual feedback during drag)
-            scale_x: object.scale.x,
-            scale_y: object.scale.y,
-            scale_z: object.scale.z
-          };
+    // Broadcast primary and any multi-selected secondary objects during drag
+    if (this.shapeManager && socketManager.isConnected && this.currentCanvasId) {
+      const maybeBroadcast = (mesh) => {
+        const shp = this.shapeManager.findShapeByMesh(mesh);
+        if (!shp) return;
+        const data = {
+          id: shp.id,
+          position_x: mesh.position.x,
+          position_y: mesh.position.y,
+          position_z: mesh.position.z,
+          rotation_x: mesh.rotation.x,
+          rotation_y: mesh.rotation.y,
+          rotation_z: mesh.rotation.z,
+          scale_x: mesh.scale.x,
+          scale_y: mesh.scale.y,
+          scale_z: mesh.scale.z
+        };
+        socketManager.updateObject(shp.id, data);
+      };
 
-          socketManager.updateObject(shape.id, objectData);
-        }
+      // Primary object
+      maybeBroadcast(object);
+
+      // Secondary objects in multi-select
+      if (this.transform?.multiSelectObjects && this.transform.multiSelectObjects.length > 0) {
+        this.transform.multiSelectObjects.forEach(m => maybeBroadcast(m));
       }
     }
   }
@@ -463,8 +475,9 @@ export class App {
   }
 
   handleDragEnd(object) {
+    const isResize = this.transform && this.transform.getMode() === 'resize';
     // If we were in resize mode, bake the scale into geometry
-    if (this.transform && this.transform.getMode() === 'resize') {
+    if (isResize) {
       // Handle primary object
       const shape = this.shapeManager.findShapeByMesh(object);
       if (shape) {
@@ -546,6 +559,33 @@ export class App {
             }
           }
         });
+      }
+    } else {
+      // Non-resize: send a final authoritative update for all involved meshes
+      if (socketManager.isConnected && this.currentCanvasId) {
+        const finalize = (mesh) => {
+          const shp = this.shapeManager.findShapeByMesh(mesh);
+          if (!shp) return;
+          const data = {
+            id: shp.id,
+            position_x: mesh.position.x,
+            position_y: mesh.position.y,
+            position_z: mesh.position.z,
+            rotation_x: mesh.rotation.x,
+            rotation_y: mesh.rotation.y,
+            rotation_z: mesh.rotation.z,
+            scale_x: mesh.scale.x,
+            scale_y: mesh.scale.y,
+            scale_z: mesh.scale.z,
+            color: shp.properties.color || '#ffffff'
+          };
+          socketManager.updateObject(shp.id, data);
+        };
+
+        finalize(object);
+        if (this.transform?.multiSelectObjects && this.transform.multiSelectObjects.length > 0) {
+          this.transform.multiSelectObjects.forEach(m => finalize(m));
+        }
       }
     }
 

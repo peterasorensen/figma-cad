@@ -70,7 +70,7 @@ export class ObjectControls {
     // Store the shape for text editing (passed from App)
     this.currentShape = shape;
 
-    // Position controls above the object
+    // Position controls above the object or centroid of objects array
     this.positionAboveObject(object);
 
     // Update modifier states based on selected object
@@ -219,10 +219,21 @@ export class ObjectControls {
   positionAboveObject(object) {
     if (!object || !this.camera) return;
 
-    // Get the object's world position
+    // If object is an array, compute centroid
     const worldPosition = new THREE.Vector3();
-    object.updateMatrixWorld();
-    worldPosition.setFromMatrixPosition(object.matrixWorld);
+    if (Array.isArray(object) && object.length > 0) {
+      worldPosition.set(0, 0, 0);
+      object.forEach(obj => {
+        obj.updateMatrixWorld();
+        const tmp = new THREE.Vector3();
+        tmp.setFromMatrixPosition(obj.matrixWorld);
+        worldPosition.add(tmp);
+      });
+      worldPosition.divideScalar(object.length);
+    } else {
+      object.updateMatrixWorld();
+      worldPosition.setFromMatrixPosition(object.matrixWorld);
+    }
 
     // Project to screen coordinates
     const screenPosition = worldPosition.project(this.camera);
