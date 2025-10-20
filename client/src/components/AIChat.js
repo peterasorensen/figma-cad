@@ -9,9 +9,15 @@ export class AIChat {
     this.messages = [];
     this.isTyping = false;
     this.currentMessageId = null;
+    this.pendingAIBulkAction = null; // Track AI bulk operations for undo
 
     this.createUI();
     this.bindEvents();
+
+    // Register with socket event handler for AI operation tracking
+    if (this.app.socketEventHandler) {
+      this.app.socketEventHandler.registerAIChat(this);
+    }
   }
 
   createUI() {
@@ -422,6 +428,30 @@ export class AIChat {
     this.setTyping(true);
 
     try {
+      // Create a pending AI bulk action for undo functionality
+      if (this.app.historyManager && this.app.shapeManager) {
+        // Capture the current state of all shapes BEFORE AI operations
+        const allShapes = this.app.shapeManager.getAllShapes();
+        const beforeStates = {};
+
+        for (const shape of allShapes) {
+          beforeStates[shape.id] = {
+            position: { ...shape.getPosition() },
+            rotation: { ...shape.getRotation() },
+            properties: { ...shape.properties },
+            geometry: shape.serializeGeometry(),
+            type: shape.type
+          };
+        }
+
+        this.pendingAIBulkAction = {
+          command: text,
+          beforeStates: beforeStates,
+          affectedShapes: new Set(),
+          action: null
+        };
+      }
+
       // Send to AI API
       const response = await this.callAIAgent(text);
 
@@ -435,9 +465,89 @@ export class AIChat {
       if (response.actions && response.actions.length > 0) {
         await this.executeActions(response.actions);
       }
+
+      // Commit the AI bulk action if we were tracking it
+      if (this.pendingAIBulkAction && this.app.historyManager && this.app.shapeManager) {
+        if (this.pendingAIBulkAction.affectedShapes.size > 0) {
+          // Create the AI bulk action manually with proper before/after states
+          const shapes = [];
+          const affectedShapeIds = Array.from(this.pendingAIBulkAction.affectedShapes);
+          const currentShapes = this.app.shapeManager.getAllShapes();
+          const currentShapeIds = new Set(currentShapes.map(s => s.id));
+
+          for (const shapeId of affectedShapeIds) {
+            const beforeState = this.pendingAIBulkAction.beforeStates[shapeId];
+            const currentShape = this.app.shapeManager.getShape(shapeId);
+
+            if (beforeState && currentShape) {
+              // Shape existed before and still exists - it was modified
+              const afterState = {
+                position: { ...currentShape.getPosition() },
+                rotation: { ...currentShape.getRotation() },
+                properties: { ...currentShape.properties },
+                geometry: currentShape.serializeGeometry(),
+                type: currentShape.type
+              };
+
+              shapes.push({
+                id: shapeId,
+                type: beforeState.type,
+                before: beforeState,
+                after: afterState
+              });
+            } else if (beforeState && !currentShape) {
+              // Shape existed before but was deleted
+              shapes.push({
+                id: shapeId,
+                type: beforeState.type,
+                before: beforeState,
+                after: null // Deleted
+              });
+            } else if (!beforeState && currentShape) {
+              // Shape didn't exist before but was created
+              const afterState = {
+                position: { ...currentShape.getPosition() },
+                rotation: { ...currentShape.getRotation() },
+                properties: { ...currentShape.properties },
+                geometry: currentShape.serializeGeometry(),
+                type: currentShape.type
+              };
+
+              shapes.push({
+                id: shapeId,
+                type: currentShape.type,
+                before: null, // Created
+                after: afterState
+              });
+            }
+          }
+
+          if (shapes.length > 0) {
+            // Create the action directly
+            const action = {
+              type: 'ai-bulk',
+              timestamp: Date.now(),
+              aiCommand: this.pendingAIBulkAction.command,
+              shapes: shapes,
+              selectedShapes: [] // No selection for AI operations
+            };
+
+            // Push it to history
+            this.app.historyManager.pushAction(action);
+
+            // Update undo/redo button states
+            if (this.app.uiManager) {
+              this.app.uiManager.updateUndoRedoButtonStates();
+            }
+          }
+        }
+
+        this.pendingAIBulkAction = null;
+      }
     } catch (error) {
       console.error('AI Chat Error:', error);
       this.setTyping(false);
+      this.pendingAIBulkAction = null;
       this.addMessage('ai', 'Sorry, I encountered an error. Please try again.');
     }
   }
@@ -523,6 +633,15 @@ export class AIChat {
     // The actual canvas manipulation is handled server-side and synced via real-time updates
     // The client will receive the updates through the existing socket events
     // No additional client-side action needed here
+  }
+
+  /**
+   * Track shapes affected by AI operations for undo functionality
+   */
+  trackAffectedShape(shapeId) {
+    if (this.pendingAIBulkAction) {
+      this.pendingAIBulkAction.affectedShapes.add(shapeId);
+    }
   }
 
   dispose() {

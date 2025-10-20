@@ -6,7 +6,15 @@ import { socketManager } from './SocketManager.js';
 export class SocketEventHandler {
   constructor(app) {
     this.app = app;
+    this.aiChatCallback = null; // Callback to notify AI chat of affected shapes
     this.setupSocketEventHandlers();
+  }
+
+  /**
+   * Register AI chat component for tracking AI operations
+   */
+  registerAIChat(aiChat) {
+    this.aiChatCallback = aiChat;
   }
 
   /**
@@ -294,6 +302,11 @@ export class SocketEventHandler {
 
     // Track for synchronization
     this.app.remoteObjects.set(data.id, data);
+
+    // Notify AI chat if tracking AI operations
+    if (this.aiChatCallback && this.aiChatCallback.trackAffectedShape) {
+      this.aiChatCallback.trackAffectedShape(data.id);
+    }
   }
 
   /**
@@ -311,6 +324,11 @@ export class SocketEventHandler {
     // Update tracking
     if (this.app.remoteObjects.has(data.id)) {
       this.app.remoteObjects.set(data.id, { ...this.app.remoteObjects.get(data.id), ...data });
+    }
+
+    // Notify AI chat if tracking AI operations
+    if (this.aiChatCallback && this.aiChatCallback.trackAffectedShape) {
+      this.aiChatCallback.trackAffectedShape(data.id);
     }
   }
 
@@ -333,5 +351,10 @@ export class SocketEventHandler {
 
     // Remove from tracking
     this.app.remoteObjects.delete(data.id);
+
+    // Notify AI chat if tracking AI operations
+    if (this.aiChatCallback && this.aiChatCallback.trackAffectedShape) {
+      this.aiChatCallback.trackAffectedShape(data.id);
+    }
   }
 }

@@ -153,65 +153,6 @@ export class HistoryManager {
     this.pushAction(action);
   }
 
-  /**
-   * Push an AI bulk action (for undoable AI operations)
-   * Captures before/after states for all shapes affected by an AI command
-   */
-  pushAIBulkAction(shapeIds, shapeManager, aiCommand = '', selectedShapeIds = []) {
-    if (this.isRestoring) return;
-
-    const shapes = [];
-    for (const id of shapeIds) {
-      const shape = shapeManager.shapes.get(id);
-      if (shape) {
-        shapes.push({
-          id: shape.id,
-          type: shape.type,
-          before: {
-            position: { ...shape.getPosition() },
-            rotation: { ...shape.getRotation() },
-            properties: { ...shape.properties },
-            geometry: shape.serializeGeometry() // Capture full geometry snapshot
-          }
-          // after state will be captured when action is committed
-        });
-      }
-    }
-
-    const action = {
-      type: 'ai-bulk',
-      timestamp: Date.now(),
-      aiCommand: aiCommand,
-      shapes: shapes,
-      selectedShapes: [...selectedShapeIds]
-    };
-
-    this.pushAction(action);
-    return action; // Return action so we can commit it later
-  }
-
-  /**
-   * Commit an AI bulk action by capturing after states
-   */
-  commitAIBulkAction(pendingAction, shapeManager) {
-    if (this.isRestoring || !pendingAction) return;
-
-    // Capture after state for all affected shapes
-    for (const shapeData of pendingAction.shapes) {
-      const shape = shapeManager.shapes.get(shapeData.id);
-      if (shape) {
-        shapeData.after = {
-          position: { ...shape.getPosition() },
-          rotation: { ...shape.getRotation() },
-          properties: { ...shape.properties },
-          geometry: shape.serializeGeometry()
-        };
-      }
-    }
-
-    // Mark action as committed (no need to push again, it's already in history)
-    pendingAction.committed = true;
-  }
 
   /**
    * Push an action to history
@@ -556,6 +497,88 @@ export class HistoryManager {
           }
         }
         break;
+
+      case 'ai-bulk':
+        // For AI bulk actions, restore all shapes to their before state
+        console.log(`Undoing AI bulk action: "${action.aiCommand}"`);
+        for (const shapeData of action.shapes) {
+          if (shapeData.before && shapeData.after) {
+            // Shape existed before and after - restore to before state
+            const shape = shapeManager.shapes.get(shapeData.id);
+            if (shape) {
+              shape.setPosition(shapeData.before.position);
+              shape.setRotation(shapeData.before.rotation);
+              shape.properties = { ...shapeData.before.properties };
+
+              // Restore geometry if it changed
+              if (shapeData.before.geometry) {
+                shape.applySerializedGeometry(shapeData.before.geometry);
+              }
+
+              // Broadcast the restoration to other users
+              if (socketManager && socketManager.isConnected) {
+                const restoreData = {
+                  position_x: shapeData.before.position.x,
+                  position_y: shapeData.before.position.y,
+                  position_z: shapeData.before.position.z,
+                  rotation_x: shapeData.before.rotation.x,
+                  rotation_y: shapeData.before.rotation.y,
+                  rotation_z: shapeData.before.rotation.z,
+                  scale_x: 1,
+                  scale_y: 1,
+                  scale_z: 1,
+                  color: shapeData.before.properties.color,
+                  width: shapeData.before.properties.width || shapeData.before.properties.radius,
+                  height: shapeData.before.properties.height,
+                  depth: shapeData.before.properties.depth,
+                  geometry: shapeData.before.geometry
+                };
+                socketManager.updateObject(shapeData.id, restoreData);
+              }
+            }
+          } else if (shapeData.before && !shapeData.after) {
+            // Shape was deleted during AI operation - recreate it
+            const restoreData = {
+              id: shapeData.id,
+              type: shapeData.type,
+              position_x: shapeData.before.position.x,
+              position_y: shapeData.before.position.y,
+              position_z: shapeData.before.position.z,
+              rotation_x: shapeData.before.rotation.x,
+              rotation_y: shapeData.before.rotation.y,
+              rotation_z: shapeData.before.rotation.z,
+              color: shapeData.before.properties.color,
+              width: shapeData.before.properties.width || shapeData.before.properties.radius,
+              height: shapeData.before.properties.height,
+              depth: shapeData.before.properties.depth,
+              geometry: shapeData.before.geometry
+            };
+
+            const shape = shapeManager.createShapeFromData(restoreData);
+            if (shape) {
+              shapeManager.addShapeToScene(shape);
+
+              // Broadcast the recreation to other users
+              if (socketManager && socketManager.isConnected) {
+                socketManager.createObject(restoreData);
+              }
+            }
+          } else if (!shapeData.before && shapeData.after) {
+            // Shape was created during AI operation - delete it
+            const shape = shapeManager.shapes.get(shapeData.id);
+            if (shape) {
+              shapeManager.scene.remove(shape.mesh);
+              shape.dispose();
+              shapeManager.shapes.delete(shapeData.id);
+
+              // Broadcast the deletion to other users
+              if (socketManager && socketManager.isConnected) {
+                socketManager.deleteObject(shapeData.id);
+              }
+            }
+          }
+        }
+        break;
     }
 
     // Restore selection state
@@ -731,6 +754,88 @@ export class HistoryManager {
             // Broadcast the forward (delete) to other users
             if (socketManager && socketManager.isConnected) {
               socketManager.deleteObject(shapeData.id);
+            }
+          }
+        }
+        break;
+
+      case 'ai-bulk':
+        // For AI bulk actions, apply all changes forward (redo)
+        console.log(`Redoing AI bulk action: "${action.aiCommand}"`);
+        for (const shapeData of action.shapes) {
+          if (shapeData.before && shapeData.after) {
+            // Shape existed before and after - restore to after state
+            const shape = shapeManager.shapes.get(shapeData.id);
+            if (shape) {
+              shape.setPosition(shapeData.after.position);
+              shape.setRotation(shapeData.after.rotation);
+              shape.properties = { ...shapeData.after.properties };
+
+              // Restore geometry if it changed
+              if (shapeData.after.geometry) {
+                shape.applySerializedGeometry(shapeData.after.geometry);
+              }
+
+              // Broadcast the restoration to other users
+              if (socketManager && socketManager.isConnected) {
+                const restoreData = {
+                  position_x: shapeData.after.position.x,
+                  position_y: shapeData.after.position.y,
+                  position_z: shapeData.after.position.z,
+                  rotation_x: shapeData.after.rotation.x,
+                  rotation_y: shapeData.after.rotation.y,
+                  rotation_z: shapeData.after.rotation.z,
+                  scale_x: 1,
+                  scale_y: 1,
+                  scale_z: 1,
+                  color: shapeData.after.properties.color,
+                  width: shapeData.after.properties.width || shapeData.after.properties.radius,
+                  height: shapeData.after.properties.height,
+                  depth: shapeData.after.properties.depth,
+                  geometry: shapeData.after.geometry
+                };
+                socketManager.updateObject(shapeData.id, restoreData);
+              }
+            }
+          } else if (!shapeData.before && shapeData.after) {
+            // Shape was created during AI operation - recreate it
+            const restoreData = {
+              id: shapeData.id,
+              type: shapeData.type,
+              position_x: shapeData.after.position.x,
+              position_y: shapeData.after.position.y,
+              position_z: shapeData.after.position.z,
+              rotation_x: shapeData.after.rotation.x,
+              rotation_y: shapeData.after.rotation.y,
+              rotation_z: shapeData.after.rotation.z,
+              color: shapeData.after.properties.color,
+              width: shapeData.after.properties.width || shapeData.after.properties.radius,
+              height: shapeData.after.properties.height,
+              depth: shapeData.after.properties.depth,
+              geometry: shapeData.after.geometry
+            };
+
+            const shape = shapeManager.createShapeFromData(restoreData);
+            if (shape) {
+              shapeManager.addShapeToScene(shape);
+
+              // Broadcast the recreation to other users
+              if (socketManager && socketManager.isConnected) {
+                socketManager.createObject(restoreData);
+              }
+            }
+          } else if (shapeData.before && !shapeData.after) {
+            // Shape was deleted during AI operation - delete it
+            const shape = shapeManager.shapes.get(shapeData.id);
+            if (shape) {
+              shapeManager.scene.remove(shape.mesh);
+              shape.dispose();
+              shapeManager.shapes.delete(shapeData.id);
+
+              // Broadcast the deletion to other users
+              if (socketManager && socketManager.isConnected) {
+                socketManager.deleteObject(shapeData.id);
+              }
             }
           }
         }

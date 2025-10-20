@@ -106,7 +106,7 @@ export class App {
     this.socketEventHandler = new SocketEventHandler(this);
     this.eventHandler = new EventHandler(this);
 
-    // Initialize AI Chat
+    // Initialize AI Chat (after socketEventHandler so it can register)
     this.aiChat = new AIChat(this);
 
     // Set up transform controls callbacks
