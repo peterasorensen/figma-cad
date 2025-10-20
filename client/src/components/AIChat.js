@@ -137,8 +137,15 @@ export class AIChat {
         display: flex;
         gap: 8px;
         flex: 1;
-        overflow: hidden;
-        mask-image: linear-gradient(to right, black 85%, transparent 100%);
+        overflow-x: auto;
+        overflow-y: hidden;
+        scrollbar-width: none; /* Firefox */
+        -ms-overflow-style: none; /* IE and Edge */
+        scroll-behavior: smooth;
+      }
+
+      .ai-chat-suggestions::-webkit-scrollbar {
+        display: none; /* Chrome, Safari, and Opera */
       }
 
       .ai-suggestion {

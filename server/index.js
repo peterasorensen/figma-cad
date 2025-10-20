@@ -547,7 +547,7 @@ const aiFunctions = {
         },
         rotation_x: {
           type: 'number',
-          description: 'X rotation in radians (use -Math.PI/2 for flat text in 2D layouts)'
+          description: 'X rotation in radians (use Math.PI/2 for flat text in 2D layouts)'
         },
         rotation_y: {
           type: 'number',
@@ -923,7 +923,7 @@ app.post('/api/ai/chat', async (req, res) => {
 CANVAS SYSTEM:
 - 50x50 unit canvas (-25 to +25 in X/Z)
 - For 2D layouts: use XY plane (y=0.05 for shapes, y=1 for text)
-- Text rotation: rotate 90 degrees forward (rotation_x: -Math.PI/2) so text lies flat
+- Text rotation: rotate 90 degrees forward (rotation_x: Math.PI/2) so text lies flat
 - Font sizes: 1-3 units for readability in 50x50 space
 
 INTELLIGENT 2D LAYOUTS:
