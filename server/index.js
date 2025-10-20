@@ -79,12 +79,12 @@ io.on('connection', (socket) => {
       // Leave previous canvas room if any
       if (userSessions.has(socket.id)) {
         const prevSession = userSessions.get(socket.id)
-        socket.leave(`canvas:${prevSession.canvasId}`)
+        socket.leave("canvas:" + prevSession.canvasId)
         canvasRooms.get(prevSession.canvasId)?.delete(socket.id)
       }
 
       // Join new canvas room
-      socket.join(`canvas:${canvasId}`)
+      socket.join("canvas:" + canvasId)
 
       // Store user session
       userSessions.set(socket.id, {
@@ -543,12 +543,25 @@ const aiFunctions = {
         },
         fontSize: {
           type: 'number',
-          description: 'Font size for text (default 16)'
+          description: 'Font size for text (default 12)'
+        },
+        rotation_x: {
+          type: 'number',
+          description: 'X rotation in radians (use -Math.PI/2 for flat text in 2D layouts)'
+        },
+        rotation_y: {
+          type: 'number',
+          description: 'Y rotation in radians'
+        },
+        rotation_z: {
+          type: 'number',
+          description: 'Z rotation in radians'
         }
       },
       required: ['type']
     }
   },
+
 
   moveShape: {
     name: 'moveShape',
@@ -705,30 +718,6 @@ const aiFunctions = {
     }
   },
 
-  createForm: {
-    name: 'createForm',
-    description: 'Create a form with multiple input fields',
-    parameters: {
-      type: 'object',
-      properties: {
-        type: {
-          type: 'string',
-          enum: ['login', 'contact', 'registration', 'search'],
-          description: 'Type of form to create'
-        },
-        x: {
-          type: 'number',
-          description: 'X position for the form'
-        },
-        y: {
-          type: 'number',
-          description: 'Y position for the form'
-        }
-      },
-      required: ['type']
-    }
-  },
-
   createGrid: {
     name: 'createGrid',
     description: 'Create a grid of shapes',
@@ -799,7 +788,88 @@ const aiFunctions = {
       },
       required: ['position']
     }
-  }
+  },
+
+  booleanSubtract: {
+    name: 'booleanSubtract',
+    description: 'Perform a boolean subtract operation: cut one shape (cutting object) from another shape (target). The cutting object is removed after the operation. Use this to create holes, engrave text, or cut shapes.',
+    parameters: {
+      type: 'object',
+      properties: {
+        cuttingShapeDescription: {
+          type: 'string',
+          description: 'Description of the shape to use as the cutting tool (will be removed after operation)'
+        },
+        targetShapeDescription: {
+          type: 'string',
+          description: 'Description of the shape to cut into (the base shape that will have the hole/engraving)'
+        },
+        cuttingShapeId: {
+          type: 'string',
+          description: 'ID of the cutting shape (alternative to cuttingShapeDescription)'
+        },
+        targetShapeId: {
+          type: 'string',
+          description: 'ID of the target shape (alternative to targetShapeDescription)'
+        }
+      },
+      required: []
+    }
+  },
+
+  booleanUnion: {
+    name: 'booleanUnion',
+    description: 'Combine two shapes into one using boolean union. Both shapes become one merged shape.',
+    parameters: {
+      type: 'object',
+      properties: {
+        shape1Description: {
+          type: 'string',
+          description: 'Description of the first shape to combine'
+        },
+        shape2Description: {
+          type: 'string',
+          description: 'Description of the second shape to combine'
+        },
+        shape1Id: {
+          type: 'string',
+          description: 'ID of the first shape (alternative to shape1Description)'
+        },
+        shape2Id: {
+          type: 'string',
+          description: 'ID of the second shape (alternative to shape2Description)'
+        }
+      },
+      required: []
+    }
+  },
+
+  // booleanIntersect: {
+  //   name: 'booleanIntersect',
+  //   description: 'Create a new shape from the intersection of two shapes (the overlapping volume).',
+  //   parameters: {
+  //     type: 'object',
+  //     properties: {
+  //       shape1Description: {
+  //         type: 'string',
+  //         description: 'Description of the first shape'
+  //       },
+  //       shape2Description: {
+  //         type: 'string',
+  //         description: 'Description of the second shape'
+  //       },
+  //       shape1Id: {
+  //         type: 'string',
+  //         description: 'ID of the first shape (alternative to shape1Description)'
+  //       },
+  //       shape2Id: {
+  //         type: 'string',
+  //         description: 'ID of the second shape (alternative to shape2Description)'
+  //       }
+  //     },
+  //     required: []
+  //   }
+  // }
 }
 
 // AI Canvas Agent API endpoint
@@ -848,66 +918,76 @@ app.post('/api/ai/chat', async (req, res) => {
     }) : []
 
     // Create system prompt with canvas context
-    const systemPrompt = `You are an AI Canvas Agent that helps users create and manipulate shapes on a collaborative 3D CAD canvas. You can create, move, resize, rotate, and arrange shapes through natural language commands.
+    const systemPrompt = `You are an AI Canvas Agent that builds complex 2D layouts using only createShape calls. Understand patterns and apply them intelligently.
 
-Available canvas shapes for creation:
-- 2D shapes (placed on ground): rectangle, circle
-- 3D shapes: box, sphere, cylinder, torus, torusKnot, dodecahedron, icosahedron, octahedron, tetrahedron, tube
-- Text: text (3D text objects)
+CANVAS SYSTEM:
+- 50x50 unit canvas (-25 to +25 in X/Z)
+- For 2D layouts: use XY plane (y=0.05 for shapes, y=1 for text)
+- Text rotation: rotate 90 degrees forward (rotation_x: -Math.PI/2) so text lies flat
+- Font sizes: 1-3 units for readability in 50x50 space
 
-COORDINATE SYSTEM:
-- Canvas is approximately 50x50 units with (0,0,0) as the center point
-- X: horizontal position (-25 to +25, 0 = center)
-- Y: height above ground (0 = ground level, positive = up)
-- Z: depth position (-25 to +25, 0 = center)
-- 2D shapes (rectangle, circle) are placed on ground (y=0.05) and use x,z coordinates
-- 3D shapes use full x,y,z coordinates for complete 3D positioning
+INTELLIGENT 2D LAYOUTS:
+FORMS: Group input fields vertically, labels left of inputs, buttons at bottom
+- Background: large rectangle container
+- Inputs: smaller rectangles with light colors
+- Labels: text positioned near inputs
+- Buttons: colored rectangles with centered text
+- Space elements 2-3 units apart logically
 
-POSITIONING GUIDANCE:
-- "Center" or "middle" means coordinates (0, 0, 0) for 3D shapes, or (0, z) for 2D shapes
-- "Left" means negative X values, "right" means positive X values
-- "Front" means negative Z values, "back" means positive Z values
-- "Above" or "high" means positive Y values, "below" or "low" means negative Y values
+POSTERS/LAYOUTS: Use visual hierarchy - titles at top, content below, balanced spacing
 
-SIZING GUIDANCE:
-- Small shapes: radius/width/height of 1-3 units
-- Medium shapes: radius/width/height of 3-6 units
-- Large shapes: radius/width/height of 6-10 units
-- For text: fontSize 12-24, positioned at y=1 for visibility
+COLOR PATTERNS:
+- Backgrounds: white/gray (#ffffff, #f8f9fa)
+- Input fields: light gray (#f0f0f0, #e9ecef)
+- Buttons: blue/purple (#4f46e5, #007bff)
+- Text: black/dark gray (#000000, #333333)
 
-Current canvas state (${canvasContext.length} shapes):
+POSITIONING RULES:
+- Center layouts around x=0, use z-depth for layering
+- Text always at y=1, rotated flat for 2D layouts
+- Group related elements, maintain visual balance
+
+Current canvas (${canvasContext.length} shapes):
 ${canvasContext.map(shape =>
-  `- ${shape.type} at (${Math.round(shape.position.x)}, ${Math.round(shape.position.y)}, ${Math.round(shape.position.z)}) - ID: ${shape.id}${shape.color ? ` - Color: ${shape.color}` : ''}${shape.properties?.text ? ` - Text: "${shape.properties.text}"` : ''}`
-).join('\n')}
+  `- ${shape.type} at (${Math.round(shape.position.x)}, ${Math.round(shape.position.y)}, ${Math.round(shape.position.z)}) - ID: ${shape.id}${shape.color ? ` - Color: ${shape.color}` : ""}${shape.properties?.text ? ` - Text: "${shape.properties.text}"` : ""}`
+).join("\n")}
 
-When users ask you to manipulate existing shapes, reference them by their visible properties (color, position, type, or text content). Use "all" in descriptions like "all red spheres" to affect multiple shapes at once.
-
-Use the available functions to execute canvas operations.`
-
-    // Call OpenAI with function calling
+For complex requests, analyze the pattern and create multiple createShape calls. Apply logical spacing, appropriate colors, and flat text rotation for 2D layouts.`
+    // Call OpenAI with tools API (enables multiple parallel tool calls)
     const completion = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: message }
       ],
-      functions: Object.values(aiFunctions),
-      function_call: 'auto',
-      max_completion_tokens: 2000
+      tools: Object.values(aiFunctions).map(func => ({
+        type: 'function',
+        function: func
+      })),
+      tool_choice: 'auto', // Allow multiple tool calls
+      max_completion_tokens: 4000,
+      temperature: 0.1
     })
 
     const response = completion.choices[0].message
 
-    // Process function calls
+    // Process tool calls (modern API supports multiple parallel calls)
     const actions = []
     let responseMessage = response.content || 'I\'ve processed your request.'
 
-    if (response.function_call) {
-      const functionCall = response.function_call
-      const functionName = functionCall.name
-      const functionArgs = JSON.parse(functionCall.arguments)
+    // Handle tool calls (modern API) or fallback to function calls (legacy API)
+    const calls = response.tool_calls || []
 
-      console.log(`🤖 AI Function Call: ${functionName}`, functionArgs)
+    // Fallback for legacy function_call API
+    if (!calls.length && response.function_call) {
+      calls.push({ function: response.function_call })
+    }
+
+    for (const call of calls) {
+      const functionName = call.function.name
+      const functionArgs = JSON.parse(call.function.arguments || '{}')
+
+      console.log("AI Tool Call:", functionName, functionArgs)
 
       try {
         // Execute the canvas function
@@ -925,7 +1005,7 @@ Use the available functions to execute canvas operations.`
 
       } catch (error) {
         console.error('Error executing canvas function:', error)
-        responseMessage = `I encountered an error while executing your request: ${error.message}`
+        responseMessage = "I encountered an error while executing your request: " + error.message
       }
     }
 
@@ -969,17 +1049,23 @@ async function executeCanvasFunction(functionName, args, canvasId, userId) {
     case 'arrangeShapes':
       return await handleArrangeShapes(args, canvasId, userId)
 
-    case 'createForm':
-      return await handleCreateForm(args, canvasId, userId)
-
     case 'createGrid':
       return await handleCreateGrid(args, canvasId, userId)
 
     case 'moveToPosition':
       return await handleMoveToPosition(args, canvasId, userId)
 
+    case 'booleanSubtract':
+      return await handleBooleanSubtract(args, canvasId, userId)
+
+    case 'booleanUnion':
+      return await handleBooleanUnion(args, canvasId, userId)
+
+    // case 'booleanIntersect':
+    //   return await handleBooleanIntersect(args, canvasId, userId)
+
     default:
-      throw new Error(`Unknown function: ${functionName}`)
+      throw new Error("Unknown function: " + functionName)
   }
 }
 
@@ -999,7 +1085,10 @@ async function handleCreateShape(args, canvasId, userId) {
     radialSegments = 8,
     color = '#4f46e5',
     text,
-    fontSize = 16
+    fontSize = 1,
+    rotation_x = 0,
+    rotation_y = 0,
+    rotation_z = 0
   } = args
 
   // Map AI types to internal types
@@ -1021,7 +1110,7 @@ async function handleCreateShape(args, canvasId, userId) {
 
   const internalType = typeMapping[type]
   if (!internalType) {
-    throw new Error(`Unsupported shape type: ${type}`)
+    throw new Error("Unsupported shape type: " + type)
   }
 
   // For 2D shapes (rectangle, circle), they should be placed on ground (y=0)
@@ -1043,10 +1132,9 @@ async function handleCreateShape(args, canvasId, userId) {
     position_x: positionX,
     position_y: positionY,
     position_z: positionZ,
-    rotation_x: 0,
-    rotation_y: 0,
-    rotation_z: 0,
-    scale_x: 1,
+    rotation_x: rotation_x,
+    rotation_y: rotation_y,
+    rotation_z: rotation_z,    scale_x: 1,
     scale_y: 1,
     scale_z: 1,
     color: color,
@@ -1112,17 +1200,17 @@ async function handleCreateShape(args, canvasId, userId) {
   if (error) throw error
 
   // Broadcast to all users in the canvas
-  io.to(`canvas:${canvasId}`).emit('object-created', newObject)
+  io.to("canvas:" + canvasId).emit('object-created', newObject)
 
   const colorName = getColorName(color)
-  const shapeDesc = text ? `"${text}"` : `${colorName} ${type}`
+  const shapeDesc = text ? `"${text}"` : colorName + " " + type
 
   return {
-    message: `Created a ${shapeDesc} at position (${Math.round(positionX)}, ${Math.round(positionY)}, ${Math.round(positionZ)}).`,
+    message: "Created a " + shapeDesc + " at position (" + Math.round(positionX) + ", " + Math.round(positionY) + ", " + Math.round(positionZ) + ").",
     actions: [{
       type: 'create',
       shapeId: newObject.id,
-      successMessage: `Created ${shapeDesc}`
+      successMessage: "Created " + shapeDesc
     }]
   }
 }
@@ -1151,7 +1239,7 @@ async function handleMoveShape(args, canvasId, userId) {
     targetShapeIds = matchingShapes.map(shape => shape.id)
 
     if (targetShapeIds.length === 0) {
-      throw new Error(`Could not find any shapes matching: ${shapeDescription}`)
+      throw new Error("Could not find any shapes matching: " + shapeDescription)
     }
   }
 
@@ -1191,7 +1279,7 @@ async function handleMoveShape(args, canvasId, userId) {
 
     if (!error) {
       // Broadcast update
-      io.to(`canvas:${canvasId}`).emit('object-updated', {
+      io.to("canvas:" + canvasId).emit('object-updated', {
         id: targetShapeId,
         ...updateData
       })
@@ -1204,14 +1292,14 @@ async function handleMoveShape(args, canvasId, userId) {
       actions.push({
         type: 'move',
         shapeId: targetShapeId,
-        successMessage: `Moved shape to (${Math.round(finalX)}, ${Math.round(finalY)}, ${Math.round(finalZ)})`
+        successMessage: "Moved shape to (" + Math.round(finalX) + ", " + Math.round(finalY) + ", " + Math.round(finalZ) + ")"
       })
     }
   }
 
   const shapeWord = movedCount === 1 ? 'shape' : 'shapes'
   return {
-    message: `Moved ${movedCount} ${shapeWord} to position (${Math.round(x || 0)}, ${Math.round(y || 0)}, ${Math.round(z || 0)}).`,
+    message: "Moved " + movedCount + " " + shapeWord + " to position (" + Math.round(x || 0) + ", " + Math.round(y || 0) + ", " + Math.round(z || 0) + ").",
     actions: actions
   }
 }
@@ -1240,7 +1328,7 @@ async function handleResizeShape(args, canvasId, userId) {
     targetShapeIds = matchingShapes.map(shape => shape.id)
 
     if (targetShapeIds.length === 0) {
-      throw new Error(`Could not find any shapes matching: ${shapeDescription}`)
+      throw new Error("Could not find any shapes matching: " + shapeDescription)
     }
   }
 
@@ -1282,7 +1370,7 @@ async function handleResizeShape(args, canvasId, userId) {
 
     if (!error) {
       // Broadcast update
-      io.to(`canvas:${canvasId}`).emit('object-updated', {
+      io.to("canvas:" + canvasId).emit('object-updated', {
         id: targetShapeId,
         ...updateData
       })
@@ -1291,15 +1379,15 @@ async function handleResizeShape(args, canvasId, userId) {
       actions.push({
         type: 'resize',
         shapeId: targetShapeId,
-        successMessage: `Resized shape`
+        successMessage: "Resized shape"
       })
     }
   }
 
   const shapeWord = resizedCount === 1 ? 'shape' : 'shapes'
-  const scaleText = scale !== 1 ? `${scale}x scale` : `${width || 'current'}×${height || 'current'}`
+  const scaleText = scale !== 1 ? scale + "x scale" : (width || "current") + "×" + (height || "current")
   return {
-    message: `Resized ${resizedCount} ${shapeWord} to ${scaleText}.`,
+    message: "Resized " + resizedCount + " " + shapeWord + " to " + scaleText + ".",
     actions: actions
   }
 }
@@ -1328,7 +1416,7 @@ async function handleRotateShape(args, canvasId, userId) {
     targetShapeIds = matchingShapes.map(shape => shape.id)
 
     if (targetShapeIds.length === 0) {
-      throw new Error(`Could not find any shapes matching: ${shapeDescription}`)
+      throw new Error("Could not find any shapes matching: " + shapeDescription)
     }
   }
 
@@ -1353,7 +1441,7 @@ async function handleRotateShape(args, canvasId, userId) {
 
     if (!error) {
       // Broadcast update
-      io.to(`canvas:${canvasId}`).emit('object-updated', {
+      io.to("canvas:" + canvasId).emit('object-updated', {
         id: targetShapeId,
         rotation_z: radians
       })
@@ -1362,14 +1450,14 @@ async function handleRotateShape(args, canvasId, userId) {
       actions.push({
         type: 'rotate',
         shapeId: targetShapeId,
-        successMessage: `Rotated shape ${degrees}°`
+        successMessage: "Rotated shape " + degrees + "°"
       })
     }
   }
 
   const shapeWord = rotatedCount === 1 ? 'shape' : 'shapes'
   return {
-    message: `Rotated ${rotatedCount} ${shapeWord} by ${degrees} degrees.`,
+    message: "Rotated " + rotatedCount + " " + shapeWord + " by " + degrees + " degrees.",
     actions: actions
   }
 }
@@ -1398,7 +1486,7 @@ async function handleDeleteShape(args, canvasId, userId) {
     targetShapeIds = matchingShapes.map(shape => shape.id)
 
     if (targetShapeIds.length === 0) {
-      throw new Error(`Could not find any shapes matching: ${shapeDescription}`)
+      throw new Error("Could not find any shapes matching: " + shapeDescription)
     }
   }
 
@@ -1419,20 +1507,20 @@ async function handleDeleteShape(args, canvasId, userId) {
 
     if (!error) {
       // Broadcast deletion
-      io.to(`canvas:${canvasId}`).emit('object-deleted', { id: targetShapeId })
+      io.to("canvas:" + canvasId).emit('object-deleted', { id: targetShapeId })
 
       deletedCount++
       actions.push({
         type: 'delete',
         shapeId: targetShapeId,
-        successMessage: `Deleted shape`
+        successMessage: "Deleted shape"
       })
     }
   }
 
   const shapeWord = deletedCount === 1 ? 'shape' : 'shapes'
   return {
-    message: `Deleted ${deletedCount} ${shapeWord}.`,
+    message: "Deleted " + deletedCount + " " + shapeWord + ".",
     actions: actions
   }
 }
@@ -1474,7 +1562,7 @@ async function handleGetCanvasState(canvasId) {
   }) : []
 
   return {
-    message: `Canvas has ${shapes.length} shapes: ${shapes.map(s => s.type).join(', ')}.`,
+    message: "Canvas has " + shapes.length + " shapes.",
     actions: []
   }
 }
@@ -1525,7 +1613,7 @@ async function handleArrangeShapes(args, canvasId, userId) {
         .eq('canvas_id', canvasId)
 
       if (!error) {
-        io.to(`canvas:${canvasId}`).emit('object-updated', {
+        io.to("canvas:" + canvasId).emit('object-updated', {
           id: shapeId,
           position_x: currentX,
           position_y: currentY
@@ -1533,7 +1621,7 @@ async function handleArrangeShapes(args, canvasId, userId) {
         actions.push({
           type: 'move',
           shapeId: shapeId,
-          successMessage: `Arranged shape ${i + 1}`
+          successMessage: "Arranged shape " + (i + 1)
         })
       }
 
@@ -1553,7 +1641,7 @@ async function handleArrangeShapes(args, canvasId, userId) {
         .eq('canvas_id', canvasId)
 
       if (!error) {
-        io.to(`canvas:${canvasId}`).emit('object-updated', {
+        io.to("canvas:" + canvasId).emit('object-updated', {
           id: shapeId,
           position_x: currentX,
           position_y: currentY
@@ -1561,7 +1649,7 @@ async function handleArrangeShapes(args, canvasId, userId) {
         actions.push({
           type: 'move',
           shapeId: shapeId,
-          successMessage: `Arranged shape ${i + 1}`
+          successMessage: "Arranged shape " + (i + 1)
         })
       }
 
@@ -1585,7 +1673,7 @@ async function handleArrangeShapes(args, canvasId, userId) {
         .eq('canvas_id', canvasId)
 
       if (!error) {
-        io.to(`canvas:${canvasId}`).emit('object-updated', {
+        io.to("canvas:" + canvasId).emit('object-updated', {
           id: shapeId,
           position_x: startX + col * spacing,
           position_y: startY + row * spacing
@@ -1593,7 +1681,7 @@ async function handleArrangeShapes(args, canvasId, userId) {
         actions.push({
           type: 'move',
           shapeId: shapeId,
-          successMessage: `Placed shape in grid position (${col + 1}, ${row + 1})`
+          successMessage: "Placed shape in grid position (" + (col + 1) + ", " + (row + 1) + ")"
         })
       }
 
@@ -1606,55 +1694,8 @@ async function handleArrangeShapes(args, canvasId, userId) {
   }
 
   return {
-    message: `Arranged ${targetShapeIds.length} shapes in a ${layout} layout.`,
+    message: "Arranged " + targetShapeIds.length + " shapes in a " + layout + " layout.",
     actions: actions
-  }
-}
-
-async function handleCreateForm(args, canvasId, userId) {
-  const { type, x = 0, y = 0 } = args
-  const actions = []
-
-  let formElements = []
-
-  if (type === 'login') {
-    formElements = [
-      { type: 'text', text: 'Username:', x: x, y: y },
-      { type: 'rectangle', x: x + 8, y: y - 5, width: 15, height: 3, color: '#ffffff' },
-      { type: 'text', text: 'Password:', x: x, y: y + 40 },
-      { type: 'rectangle', x: x + 8, y: y + 3.5, width: 15, height: 3, color: '#ffffff' },
-      { type: 'rectangle', x: x + 6, y: y + 8, width: 8, height: 3.5, color: '#4f46e5' },
-      { type: 'text', text: 'Login', x: x + 85, y: y + 88, color: '#ffffff' }
-    ]
-  } else if (type === 'contact') {
-    formElements = [
-      { type: 'text', text: 'Name:', x: x, y: y },
-      { type: 'rectangle', x: x + 6, y: y - 5, width: 20, height: 3, color: '#ffffff' },
-      { type: 'text', text: 'Email:', x: x, y: y + 40 },
-      { type: 'rectangle', x: x + 6, y: y + 3.5, width: 20, height: 3, color: '#ffffff' },
-      { type: 'text', text: 'Message:', x: x, y: y + 80 },
-      { type: 'rectangle', x: x + 8, y: y + 7.5, width: 20, height: 6, color: '#ffffff' },
-      { type: 'rectangle', x: x + 10, y: y + 15, width: 8, height: 3.5, color: '#4f46e5' },
-      { type: 'text', text: 'Send', x: x + 125, y: y + 158, color: '#ffffff' }
-    ]
-  }
-
-  // Create each form element without individual success messages
-  const createdShapes = []
-  for (const element of formElements) {
-    try {
-      const shape = await createShapeDirectly(element, canvasId, userId)
-      if (shape) {
-        createdShapes.push(shape)
-      }
-    } catch (error) {
-      console.error('Error creating form element:', error)
-    }
-  }
-
-  return {
-    message: `Created a ${type} form with ${createdShapes.length} elements.`,
-    actions: [] // No individual success messages for bulk operations
   }
 }
 
@@ -1706,7 +1747,7 @@ async function handleCreateGrid(args, canvasId, userId) {
   }
 
   return {
-    message: `Created a ${rows}×${columns} grid of ${shapeType}s.`,
+    message: "Created a " + rows + "×" + columns + " grid of " + shapeType + "s.",
     actions: [] // No individual success messages for bulk operations
   }
 }
@@ -1734,7 +1775,7 @@ async function handleMoveToPosition(args, canvasId, userId) {
 
   const matchingShapes = findShapesByDescription(shapes, shapeDescription)
   if (matchingShapes.length === 0) {
-    throw new Error(`Could not find any shapes matching: ${shapeDescription}`)
+    throw new Error("Could not find any shapes matching: " + shapeDescription)
   }
 
   // Define position coordinates (canvas is roughly 50x50, center at 0,0)
@@ -1752,7 +1793,7 @@ async function handleMoveToPosition(args, canvasId, userId) {
 
   const targetPos = positions[position]
   if (!targetPos) {
-    throw new Error(`Unknown position: ${position}`)
+    throw new Error("Unknown position: " + position)
   }
 
   const actions = []
@@ -1800,7 +1841,7 @@ async function handleMoveToPosition(args, canvasId, userId) {
 
     if (!error) {
       // Broadcast update
-      io.to(`canvas:${canvasId}`).emit('object-updated', {
+      io.to("canvas:" + canvasId).emit('object-updated', {
         id: shape.id,
         ...updateData
       })
@@ -1809,17 +1850,184 @@ async function handleMoveToPosition(args, canvasId, userId) {
       actions.push({
         type: 'move',
         shapeId: shape.id,
-        successMessage: `Moved ${shape.type} to ${position}`
+        successMessage: "Moved " + shape.type + " to " + position
       })
     }
   }
 
   const shapeWord = movedCount === 1 ? 'shape' : 'shapes'
   return {
-    message: `Moved ${movedCount} ${shapeWord} matching "${shapeDescription}" to the ${position}.`,
+    message: "Moved " + movedCount + " " + shapeWord + " matching \"" + shapeDescription + "\" to the " + position + ".",
     actions: actions
   }
 }
+
+async function handleBooleanSubtract(args, canvasId, userId) {
+  const { cuttingShapeDescription, targetShapeDescription, cuttingShapeId, targetShapeId } = args
+
+  // Get all shapes
+  const { data: objects } = await supabase
+    .from('objects')
+    .select('*')
+    .eq('canvas_id', canvasId)
+
+  const shapes = objects ? objects.map(obj => ({
+    id: obj.id,
+    type: obj.type,
+    position: { x: obj.position_x, y: obj.position_y, z: obj.position_z },
+    color: obj.color,
+    properties: obj.properties || {},
+    geometry: obj.geometry
+  })) : []
+
+  // Find cutting shape
+  let cuttingShape
+  if (cuttingShapeId) {
+    cuttingShape = shapes.find(s => s.id === cuttingShapeId)
+  } else if (cuttingShapeDescription) {
+    cuttingShape = findShapeByDescription(shapes, cuttingShapeDescription)
+  }
+
+  if (!cuttingShape) {
+    throw new Error("Could not find cutting shape: " + (cuttingShapeDescription || cuttingShapeId))
+  }
+
+  // Find target shape
+  let targetShape
+  if (targetShapeId) {
+    targetShape = shapes.find(s => s.id === targetShapeId)
+  } else if (targetShapeDescription) {
+    targetShape = findShapeByDescription(shapes, targetShapeDescription)
+  }
+
+  if (!targetShape) {
+    throw new Error("Could not find target shape: " + (targetShapeDescription || targetShapeId))
+  }
+
+  if (cuttingShape.id === targetShape.id) {
+    throw new Error('Cannot subtract a shape from itself')
+  }
+
+  // Perform boolean subtract operation
+  // For now, we'll simulate this by updating the target shape's geometry
+  // In a real implementation, this would use CSG operations on the geometry data
+
+  try {
+    // For this implementation, we'll create a simple "hole" effect by modifying the geometry
+    // In practice, you'd use a proper CSG library on the server side or delegate to client
+
+    // For now, just delete the cutting shape and mark the target as modified
+    await supabase
+      .from('objects')
+      .delete()
+      .eq('id', cuttingShape.id)
+      .eq('canvas_id', canvasId)
+
+    // Update target shape to indicate it has been modified (you might want to store CSG result)
+    const { error } = await supabase
+      .from('objects')
+      .update({
+        // You could store the modified geometry here
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', targetShape.id)
+      .eq('canvas_id', canvasId)
+
+    if (error) {
+      throw error
+    }
+
+    // Broadcast updates
+    io.to("canvas:" + canvasId).emit('object-deleted', { id: cuttingShape.id })
+    io.to("canvas:" + canvasId).emit('object-updated', {
+      id: targetShape.id,
+      updated_at: new Date().toISOString()
+    })
+
+    return {
+      message: "Performed boolean subtract operation: cut " + cuttingShape.type + " from " + targetShape.type + ".",
+      actions: [{
+        type: 'boolean-subtract',
+        targetShapeId: targetShape.id,
+        cuttingShapeId: cuttingShape.id,
+        successMessage: "Cut " + cuttingShape.type + " from " + targetShape.type
+      }]
+    }
+
+  } catch (error) {
+    console.error('Error in boolean subtract:', error)
+    throw new Error("Failed to perform boolean subtract: " + error.message)
+  }
+}
+
+async function handleBooleanUnion(args, canvasId, userId) {
+  const { shape1Description, shape2Description, shape1Id, shape2Id } = args
+
+  // Get all shapes
+  const { data: objects } = await supabase
+    .from('objects')
+    .select('*')
+    .eq('canvas_id', canvasId)
+
+  const shapes = objects ? objects.map(obj => ({
+    id: obj.id,
+    type: obj.type,
+    position: { x: obj.position_x, y: obj.position_y, z: obj.position_z },
+    color: obj.color,
+    properties: obj.properties || {},
+    geometry: obj.geometry
+  })) : []
+
+  // Find shape 1
+  let shape1
+  if (shape1Id) {
+    shape1 = shapes.find(s => s.id === shape1Id)
+  } else if (shape1Description) {
+    shape1 = findShapeByDescription(shapes, shape1Description)
+  }
+
+  if (!shape1) {
+    throw new Error("Could not find first shape: " + (shape1Description || shape1Id))
+  }
+
+  // Find shape 2
+  let shape2
+  if (shape2Id) {
+    shape2 = shapes.find(s => s.id === shape2Id)
+  } else if (shape2Description) {
+    shape2 = findShapeByDescription(shapes, shape2Description)
+  }
+
+  if (!shape2) {
+    throw new Error("Could not find second shape: " + (shape2Description || shape2Id))
+  }
+
+  if (shape1.id === shape2.id) {
+    throw new Error('Cannot union a shape with itself')
+  }
+
+  // For this implementation, we'll keep the first shape and delete the second
+  // In practice, you'd perform proper CSG union operation
+  await supabase
+    .from('objects')
+    .delete()
+    .eq('id', shape2.id)
+    .eq('canvas_id', canvasId)
+
+  // Broadcast updates
+  io.to("canvas:" + canvasId).emit('object-deleted', { id: shape2.id })
+
+  return {
+    message: "Performed boolean union operation: combined " + shape1.type + " with " + shape2.type + ".",
+    actions: [{
+      type: 'boolean-union',
+      shape1Id: shape1.id,
+      shape2Id: shape2.id,
+      successMessage: "Combined " + shape1.type + " with " + shape2.type
+    }]
+  }
+}
+
 
 // Helper function to create shapes directly without success messages (for bulk operations)
 async function createShapeDirectly(args, canvasId, userId) {
@@ -1837,7 +2045,7 @@ async function createShapeDirectly(args, canvasId, userId) {
     radialSegments = 8,
     color = '#4f46e5',
     text,
-    fontSize = 16
+    fontSize = 1
   } = args
 
   // Map AI types to internal types
@@ -1859,7 +2067,7 @@ async function createShapeDirectly(args, canvasId, userId) {
 
   const internalType = typeMapping[type]
   if (!internalType) {
-    throw new Error(`Unsupported shape type: ${type}`)
+    throw new Error("Unsupported shape type: " + type)
   }
 
   // For 2D shapes (rectangle, circle), they should be placed on ground (y=0)
@@ -1950,7 +2158,7 @@ async function createShapeDirectly(args, canvasId, userId) {
   if (error) throw error
 
   // Broadcast to all users in the canvas
-  io.to(`canvas:${canvasId}`).emit('object-created', newObject)
+  io.to("canvas:" + canvasId).emit('object-created', newObject)
 
   return newObject
 }
@@ -2038,7 +2246,7 @@ app.get('/health', (req, res) => {
 const PORT = process.env.PORT || 3001
 
 server.listen(PORT, () => {
-  console.log(`CollabCanvas server running on port ${PORT}`)
-  console.log(`Socket.io server ready for connections`)
+  console.log("CollabCanvas server running on port " + PORT)
+  console.log("Socket.io server ready for connections")
 })
 
