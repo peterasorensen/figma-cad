@@ -761,7 +761,7 @@ async function handleCreateGrid(args, canvasId, userId, io) {
           radius: size / 2,
           tube: size / 8,
           color: color
-        }, canvasId, userId)
+        }, canvasId, userId, io)
 
         if (shape) {
           createdShapes.push(shape)
@@ -1060,7 +1060,7 @@ async function handleBooleanUnion(args, canvasId, userId, io) {
 }
 
 // Helper function to create shapes directly without success messages (for bulk operations)
-async function createShapeDirectly(args, canvasId, userId) {
+async function createShapeDirectly(args, canvasId, userId, io) {
   const {
     type,
     x = 0,
