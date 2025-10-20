@@ -205,41 +205,83 @@ export function setupSocketHandlers(io) {
 
     // Handle object updates
     socket.on('update-object', async (data) => {
+      console.log('🔧 SERVER: Received update-object event:', data.id);
+      console.log('🔧 SERVER: Update data keys:', Object.keys(data));
+
       const session = userSessions.get(socket.id)
-      if (!session) return
+      if (!session) {
+        console.log('🔧 SERVER: No session found for socket');
+        return;
+      }
+
+      console.log('🔧 SERVER: Session found, canvas ID:', session.canvasId);
 
       try {
         const { id, ...updateData } = data
 
+        console.log('🔧 SERVER: Processing update for object:', id);
+        console.log('🔧 SERVER: Update data contains geometry:', !!updateData.geometry);
+
         // Throttle object updates to reduce database load
         const updateKey = `${id}-${session.canvasId}`
+        console.log('🔧 SERVER: Update key:', updateKey);
 
         if (objectUpdates.has(updateKey)) {
           clearTimeout(objectUpdates.get(updateKey))
+          console.log('🔧 SERVER: Cleared existing timeout');
         }
 
         objectUpdates.set(updateKey, setTimeout(async () => {
           try {
+            console.log('🔧 SERVER: Executing database update...');
             const { error } = await supabase
               .from('objects')
               .update(updateData)
               .eq('id', id)
               .eq('canvas_id', session.canvasId) // Ensure user can only update objects in their canvas
 
-            if (error) throw error
+            if (error) {
+              console.error('🔧 SERVER: Database update error:', error);
+              throw error;
+            }
+
+            console.log('🔧 SERVER: Database update successful');
+
+            // Verify the data was actually saved by querying it back
+            console.log('🔧 SERVER: Verifying database save...');
+            const { data: verifyData, error: verifyError } = await supabase
+              .from('objects')
+              .select('id, geometry')
+              .eq('id', id)
+              .eq('canvas_id', session.canvasId)
+              .single();
+
+            if (verifyError) {
+              console.error('🔧 SERVER: Verification query failed:', verifyError);
+            } else {
+              console.log('🔧 SERVER: Verification successful');
+              console.log('🔧 SERVER: Saved geometry exists:', !!verifyData.geometry);
+              if (verifyData.geometry) {
+                console.log('🔧 SERVER: Saved geometry keys:', Object.keys(verifyData.geometry));
+                if (verifyData.geometry.attributes?.position) {
+                  console.log('🔧 SERVER: Saved position vertices:', verifyData.geometry.attributes.position.array.length);
+                }
+              }
+            }
 
             // Broadcast to other users in canvas (don't send back to sender to avoid conflicts)
             socket.to(`canvas:${session.canvasId}`).emit('object-updated', data)
+            console.log('🔧 SERVER: Broadcasted update to other users');
 
-            console.log(`Object ${id} updated in canvas ${session.canvasId}`)
+            console.log(`✅ Object ${id} updated in canvas ${session.canvasId}`)
           } catch (error) {
-            console.error('Error updating object:', error)
+            console.error('❌ Error updating object:', error)
           }
           objectUpdates.delete(updateKey)
         }, 16)) // Throttle to 60fps for smooth dragging
 
       } catch (error) {
-        console.error('Error queuing object update:', error)
+        console.error('❌ Error queuing object update:', error)
       }
     })
 

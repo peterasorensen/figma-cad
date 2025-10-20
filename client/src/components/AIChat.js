@@ -7,6 +7,7 @@ export class AIChat {
     this.app = app;
     this.isOpen = false;
     this.messages = [];
+    this.conversationHistory = []; // Store conversation for AI context
     this.isTyping = false;
     this.currentMessageId = null;
     this.pendingAIBulkAction = null; // Track AI bulk operations for undo
@@ -516,7 +517,10 @@ export class AIChat {
     const text = this.input.value.trim();
     if (!text || this.isTyping) return;
 
-    // Add user message
+    // Add user message to history
+    this.conversationHistory.push({ role: 'user', content: text });
+
+    // Add user message to UI
     this.addMessage('user', text);
     this.input.value = '';
 
@@ -554,7 +558,10 @@ export class AIChat {
       // Hide typing indicator
       this.setTyping(false);
 
-      // Add AI response
+      // Add AI response to history
+      this.conversationHistory.push({ role: 'assistant', content: response.message });
+
+      // Add AI response to UI
       this.addMessage('ai', response.message);
 
       // Execute any canvas actions
@@ -701,6 +708,7 @@ export class AIChat {
       },
       body: JSON.stringify({
         message,
+        conversationHistory: this.conversationHistory,
         canvasId: this.app.currentCanvasId,
         userId: this.app.auth.userId
       })
@@ -728,6 +736,12 @@ export class AIChat {
   async executeAction(action) {
     console.log('Executing action:', action);
 
+    // Handle boolean operations directly on the client
+    if (action.type === 'boolean-subtract') {
+      console.log('Performing boolean subtract operation directly on client');
+      await this.performBooleanSubtract(action);
+    }
+
     // Show success message for the action
     if (action.successMessage) {
       this.addMessage('ai', `✅ ${action.successMessage}`);
@@ -736,6 +750,89 @@ export class AIChat {
     // The actual canvas manipulation is handled server-side and synced via real-time updates
     // The client will receive the updates through the existing socket events
     // No additional client-side action needed here
+  }
+
+  async performBooleanSubtract(action) {
+    const { targetShapeId, cuttingShapeId } = action;
+
+    console.log('Performing boolean subtract:', { targetShapeId, cuttingShapeId });
+
+    // Get the shapes from the shape manager
+    if (!this.app.shapeManager) {
+      console.error('Shape manager not available for boolean operation');
+      return;
+    }
+
+    const cuttingShape = this.app.shapeManager.getShape(cuttingShapeId);
+    const targetShape = this.app.shapeManager.getShape(targetShapeId);
+
+    console.log('Shapes found:', { cuttingShape: !!cuttingShape, targetShape: !!targetShape });
+
+    if (!cuttingShape || !targetShape) {
+      console.error('Could not find shapes for boolean operation');
+      return;
+    }
+
+    if (!this.app.booleanManager) {
+      console.error('BooleanManager not available');
+      return;
+    }
+
+    // Set the cutting object temporarily (like the manual flow does)
+    console.log('Setting cutting object temporarily...');
+    const originalCuttingObject = this.app.booleanManager.cuttingObject;
+    this.app.booleanManager.cuttingObject = cuttingShape;
+
+    // Perform the boolean operation
+    console.log('Calling BooleanManager.applySubtract...');
+    const success = this.app.booleanManager.applySubtract(targetShape);
+
+    // Restore original cutting object
+    this.app.booleanManager.cuttingObject = originalCuttingObject;
+    console.log('Restored original cutting object');
+
+    console.log('Boolean operation result:', success);
+
+    if (success) {
+      // Broadcast the geometry change to persist it
+      console.log('Attempting to broadcast geometry change...');
+      console.log('Socket manager available:', !!this.app.socketManager);
+      console.log('Socket connected:', this.app.socketManager?.isConnected);
+
+      if (this.app.socketManager && this.app.socketManager.isConnected) {
+        console.log('🔧 Target shape mesh geometry attributes:', Object.keys(targetShape.mesh.geometry.attributes));
+        console.log('🔧 Target shape has position:', !!targetShape.mesh.geometry.attributes.position);
+        console.log('🔧 Target shape has normal:', !!targetShape.mesh.geometry.attributes.normal);
+        console.log('🔧 Target shape position count:', targetShape.mesh.geometry.attributes.position?.count || 0);
+
+        console.log('Serializing geometry...');
+        const geometryData = targetShape.serializeGeometry();
+        console.log('Geometry serialization result:', !!geometryData);
+
+        if (geometryData) {
+          const updateData = {
+            id: targetShape.id,
+            geometry: geometryData
+          };
+        console.log('Sending object update with geometry data...');
+        console.log('Update data keys:', Object.keys(updateData));
+        console.log('Geometry data keys:', Object.keys(geometryData));
+        console.log('Geometry attributes:', Object.keys(geometryData.attributes || {}));
+        if (geometryData.attributes?.position) {
+          console.log('Position vertices:', geometryData.attributes.position.array.length);
+        }
+
+          this.app.socketManager.sendObjectUpdate(targetShape.id, updateData);
+          console.log('✅ Geometry update sent to server');
+        } else {
+          console.error('❌ Failed to serialize geometry for shape:', targetShape.id);
+        }
+      } else {
+        console.error('❌ Socket not available or not connected for geometry broadcast');
+      }
+    } else {
+      console.error('❌ Boolean subtract operation failed');
+    }
   }
 
   /**

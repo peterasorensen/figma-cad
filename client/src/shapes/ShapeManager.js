@@ -405,14 +405,29 @@ export class ShapeManager {
 
       // If geometry is present, try to use it (preferred path for existing shapes)
       if (data.geometry && data.geometry !== '') {
+        console.log(`🔧 Loading shape ${data.id} with geometry data...`);
+        console.log(`🔧 Geometry data keys:`, Object.keys(data.geometry));
+        console.log(`🔧 Geometry attributes:`, Object.keys(data.geometry.attributes || {}));
+        if (data.geometry.attributes?.position) {
+          console.log(`🔧 Position vertices:`, data.geometry.attributes.position.array.length);
+        }
+
         try {
           // Deserialize geometry first (static method, no shape instance needed)
           const geometry = Shape.deserializeGeometry(data.geometry);
+          console.log(`🔧 Deserialized geometry:`, !!geometry);
 
           if (geometry) {
+            console.log(`🔧 Geometry attributes after deserialization:`, Object.keys(geometry.attributes || {}));
+            if (geometry.attributes?.position) {
+              console.log(`🔧 Deserialized position vertices:`, geometry.attributes.position.count);
+            }
+
             // Create shape directly from geometry (avoids double allocation)
             shape = this.createShape(data.type, position, properties, data.id, transform, geometry);
             console.log(`✓ Created shape from geometry: ${data.id}`);
+          } else {
+            console.log(`🔧 Deserialized geometry is null for shape ${data.id}`);
           }
         } catch (error) {
           console.warn(`Failed to deserialize geometry for shape ${data.id}, falling back to type-based creation:`, error);

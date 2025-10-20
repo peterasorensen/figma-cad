@@ -3,6 +3,7 @@ import { auth } from '../auth/Auth.js'
 
 export class SocketManager {
   constructor() {
+    console.log('🔌 SocketManager constructor called - initializing socket manager')
     this.socket = null
     this.currentCanvasId = null
     this.isConnected = false
@@ -14,12 +15,18 @@ export class SocketManager {
     this.manualReconnectTimer = null // Timer for manual reconnection attempts
     this.manualReconnectInterval = 1000 // 1 second for more aggressive reconnection
     this.hasEverConnected = false // Track if we've ever successfully connected
+    console.log('🔌 SocketManager constructor completed')
   }
 
   connect() {
-    if (this.socket?.connected) return
+    console.log('🔌 SocketManager.connect() called')
+    if (this.socket?.connected) {
+      console.log('🔌 Socket already connected, skipping')
+      return
+    }
 
     const serverUrl = import.meta.env.VITE_SERVER_URL || 'http://localhost:3001'
+    console.log('🔌 Connecting to server URL:', serverUrl)
 
     this.socket = io(serverUrl, {
       autoConnect: false,
@@ -28,17 +35,19 @@ export class SocketManager {
       reconnectionDelay: 1000
     })
 
+    console.log('🔌 Setting up socket connect handler...')
     this.socket.on('connect', () => {
-      console.log('Connected to server - setting isConnected = true')
+      console.log('🔌 SOCKET CONNECTED! Socket ID:', this.socket.id)
+      console.log('🔌 Connected to server - setting isConnected = true')
       this.isConnected = true
       this.hasEverConnected = true // Mark that we've successfully connected at least once
       this.reconnectAttempts = 0
-      console.log('About to clear manual reconnection timer, current timer:', !!this.manualReconnectTimer)
+      console.log('🔌 About to clear manual reconnection timer, current timer:', !!this.manualReconnectTimer)
 
       // Clear manual reconnection timer when successfully connected
       this.clearManualReconnectTimer()
 
-      console.log('After clearing timer, isConnected:', this.isConnected, 'hasTimer:', !!this.manualReconnectTimer)
+      console.log('🔌 After clearing timer, isConnected:', this.isConnected, 'hasTimer:', !!this.manualReconnectTimer)
 
       // Process any pending canvas join if we have one
       if (this.pendingCanvasJoin) {
@@ -135,7 +144,16 @@ export class SocketManager {
       this.onObjectDeletedCallback?.(data)
 
       this.socket.on('boolean-operation', (data) => {
-        this.onBooleanOperationCallback?.(data)
+        console.log('🔧 CLIENT SOCKET: Received boolean-operation event:', data);
+        console.log('🔧 Event data:', JSON.stringify(data, null, 2));
+        console.log('🔧 Calling callback with data...');
+        this.onBooleanOperationCallback?.(data);
+        console.log('🔧 Callback called');
+      })
+
+      // Test event to verify socket communication
+      this.socket.on('test-event', (data) => {
+        console.log('🔧 CLIENT SOCKET: Received test-event:', data);
       })
     })
 
@@ -165,6 +183,7 @@ export class SocketManager {
     console.log(`🔄 joinCanvas called for: ${canvasId}`)
     console.log(`Connection status: ${this.socket?.connected ? 'connected' : 'not connected'}`)
     console.log(`Auth status: ${auth.isAuthenticated ? 'authenticated' : 'not authenticated'}`)
+    console.log(`Current canvas ID: ${this.currentCanvasId}`)
 
     // Check if we're ready to join (both connected and authenticated)
     if (this.socket?.connected && auth.isAuthenticated) {
@@ -173,7 +192,8 @@ export class SocketManager {
         canvasId,
         userId: auth.userId
       })
-      console.log(`✅ Joined canvas: ${canvasId}`)
+      console.log(`✅ EMITTED join-canvas event for: ${canvasId}`)
+      console.log(`✅ Should be joining room: canvas:${canvasId}`)
     } else {
       // Queue the join request for later
       this.pendingCanvasJoin = canvasId
@@ -356,6 +376,32 @@ export class SocketManager {
     } else {
       console.log('Manual reconnection timer was already null')
     }
+  }
+
+  /**
+   * Send an object update to the server
+   * @param {string} objectId - ID of the object to update
+   * @param {object} updateData - Data to update (position, geometry, etc.)
+   */
+  sendObjectUpdate(objectId, updateData) {
+    console.log('🔧 sendObjectUpdate called for object:', objectId);
+    console.log('🔧 Socket available:', !!this.socket);
+    console.log('🔧 Socket connected:', this.isConnected);
+
+    if (!this.socket || !this.isConnected) {
+      console.warn('❌ Cannot send object update: socket not connected');
+      return;
+    }
+
+    console.log('🔧 Emitting update-object event...');
+    console.log('🔧 Update data keys:', Object.keys(updateData));
+
+    this.socket.emit('update-object', {
+      id: objectId,
+      ...updateData
+    });
+
+    console.log('🔧 update-object event emitted successfully');
   }
 }
 

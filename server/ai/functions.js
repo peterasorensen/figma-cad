@@ -423,7 +423,7 @@ export const aiFunctions = {
 export function setupAIChatEndpoint(app, io) {
   app.post('/api/ai/chat', async (req, res) => {
     try {
-      const { message, canvasId, userId } = req.body
+      const { message, conversationHistory, canvasId, userId } = req.body
 
       if (!message || !canvasId || !userId) {
         return res.status(400).json({ error: 'Missing required fields: message, canvasId, userId' })
@@ -511,13 +511,6 @@ IMPORTANT: When ANY request mentions "inscribe", "engrave", "carve", "cut into",
 4. ALWAYS moveShape the text to intersect with the base object
 5. ALWAYS booleanSubtract the text from the base object
 
-REQUIRED STEPS FOR TEXT INSCRIPTION:
-- createShape(type="box", x=0, y=0, z=0, width=4, height=4, depth=4)  // Base object
-- createShape(type="text", text="HELLO", x=0, y=0, z=0, fontSize=1)  // Text
-- resizeShape(shapeDescription="HELLO", scale=0.5, depth=0.3)  // Make text smaller and deeper
-- moveShape(shapeDescription="HELLO", x=0, y=0, z=0)  // Position to intersect
-- booleanSubtract(cuttingShapeDescription="HELLO", targetShapeDescription="box")  // Cut the text
-
 RESIZE EXAMPLES:
 - resizeShape(shapeDescription="text", scaleX=2)  // Double width only
 - resizeShape(shapeDescription="box", scaleY=0.5)  // Half height only
@@ -529,17 +522,7 @@ NOTE: scaleX/scaleY/scaleZ multiply the current dimension. Use scaleZ=10 to make
 Example: "inscribe 'HELLO' in a cube" MUST call all 5 functions above in sequence.
 
 CREATING OBJECTS WITH HOLES/CUTS:
-For objects with holes or cutouts:
-1. Create the main/base shape
-2. Create a cutting shape (cylinder, box, etc.) positioned where you want the hole
-3. Use booleanSubtract to cut the hole
-Example: "create a cup" → createShape(cylinder tall), createShape(cylinder smaller, positioned inside), booleanSubtract(small cylinder from tall cylinder)
-
-BOOLEAN OPERATIONS EXAMPLES:
-- CUP: createShape(type="cylinder", height=5, radius=2), createShape(type="cylinder", height=4, radius=1.5, positioned inside), booleanSubtract(inner from outer)
-- RING: createShape(type="cylinder", height=1), createShape(type="cylinder", height=1, radius=0.5, positioned inside), booleanSubtract(inner from outer)
-- ENGRAVED TEXT: createShape(base object), createShape(text), resizeShape(text, depth=0.3), position text to intersect, booleanSubtract(text from base)
-- HOLLOW SPHERE: createShape(type="sphere", radius=3), createShape(type="sphere", radius=2.5), booleanSubtract(inner from outer)
+For objects with holes or cutouts, opt for overlapping obejects and boolean subtract
 
 WORKFLOW FOR COMPLEX OBJECTS:
 1. Break down the request into primitive shapes
@@ -582,21 +565,38 @@ For complex requests, analyze the pattern and use MULTIPLE function calls in seq
 
 CRITICAL: For inscription requests, you MUST make multiple function calls in sequence:
 
-1. First create the base shape (cube/box)
-2. Then create the text shape with the inscription text
-3. Then resize the text to be smaller and add depth (use depth parameter to make it 3D)
-4. Then position the text to intersect with the base shape
+1. First create the base shape (cube/box) at position (0,0,0)
+2. Then create the text shape at position (0,0,0) - text will be positioned at y=0 for proper 3D intersection
+3. Then resize the text to be smaller (scale=0.5) and add depth (depth=0.3) for engraving
+4. Then move the text to (0,0,0) to ensure it intersects with the base shape
 5. Finally use booleanSubtract to cut the text shape from the base shape
 
+EXAMPLE FUNCTION CALLS for "inscribe HELLO in a box":
+- createShape(type="box", x=0, y=0, z=0, width=4, height=4, depth=4)
+- createShape(type="text", text="HELLO", x=0, y=0, z=0, fontSize=1)
+- resizeShape(shapeDescription="HELLO", scale=0.5, depth=0.3)
+- moveShape(shapeDescription="HELLO", x=0, y=0, z=0)
+- booleanSubtract(cuttingShapeDescription="HELLO", targetShapeDescription="box")
+
 IMPORTANT: Always use the EXACT text from the user's request as the shapeDescription for the text-related functions.`
+
+      // Build messages array with conversation history
+      const messages = [
+        { role: 'system', content: systemPrompt }
+      ];
+
+      // Add conversation history if available (includes the current user message)
+      if (conversationHistory && Array.isArray(conversationHistory)) {
+        messages.push(...conversationHistory);
+      } else {
+        // Fallback: if no conversation history, add current message
+        messages.push({ role: 'user', content: message });
+      }
 
       // Call OpenAI with tools API (enables multiple parallel tool calls)
       const completion = await openai.chat.completions.create({
         model: 'gpt-4o',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: message }
-        ],
+        messages: messages,
         tools: Object.values(aiFunctions).map(func => ({
           type: 'function',
           function: func

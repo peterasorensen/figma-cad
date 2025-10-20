@@ -49,9 +49,12 @@ export class SocketEventHandler {
       this.handleObjectDeleted(data);
     });
 
+    console.log('🔧 Setting up boolean operation callback...');
     socketManager.onBooleanOperation((data) => {
+      console.log('🔧 SocketEventHandler callback triggered with data:', data);
       this.handleBooleanOperation(data);
     });
+    console.log('🔧 Boolean operation callback set up');
 
     socketManager.onError((error) => {
       console.error('Socket error:', error);
@@ -366,26 +369,53 @@ export class SocketEventHandler {
    * Handle boolean operation event
    */
   handleBooleanOperation(data) {
-    console.log('🔧 Boolean operation event received:', data);
+    console.log('🔧 AI BOOLEAN OPERATION EVENT RECEIVED:', data);
+    console.log('🔧 Operation type:', data?.operation);
+    console.log('🔧 Cutting shape ID:', data?.cuttingShapeId);
+    console.log('🔧 Target shape ID:', data?.targetShapeId);
+    console.log('🔧 Timestamp:', data?.timestamp);
 
     if (!data || !data.operation) {
-      console.error('🔴 Invalid boolean operation data:', data);
+      console.error('🔴 INVALID BOOLEAN OPERATION DATA - MISSING OPERATION:', data);
       return;
     }
 
     const { operation, cuttingShapeId, targetShapeId } = data;
 
+    console.log('🔧 Processing operation:', operation);
+
     // Get the shapes from the shape manager
     if (!this.app.shapeManager) {
-      console.error('🔴 Shape manager not available for boolean operation');
+      console.error('🔴 SHAPE MANAGER NOT AVAILABLE FOR BOOLEAN OPERATION');
       return;
     }
 
+    console.log('🔧 Shape manager available, looking up shapes...');
     const cuttingShape = this.app.shapeManager.getShape(cuttingShapeId);
     const targetShape = this.app.shapeManager.getShape(targetShapeId);
 
-    console.log('🔧 Cutting shape found:', !!cuttingShape, cuttingShapeId);
-    console.log('🔧 Target shape found:', !!targetShape, targetShapeId);
+    console.log('🔧 Cutting shape lookup result:', !!cuttingShape, 'for ID:', cuttingShapeId);
+    console.log('🔧 Target shape lookup result:', !!targetShape, 'for ID:', targetShapeId);
+
+    if (cuttingShape) {
+      console.log('🔧 Cutting shape details:', {
+        id: cuttingShape.id,
+        type: cuttingShape.type,
+        position: cuttingShape.getPosition(),
+        visible: cuttingShape.mesh?.visible
+      });
+    } else {
+      console.log('🔧 Available shapes in manager:', this.app.shapeManager.getAllShapes().map(s => ({id: s.id, type: s.type})));
+    }
+
+    if (targetShape) {
+      console.log('🔧 Target shape details:', {
+        id: targetShape.id,
+        type: targetShape.type,
+        position: targetShape.getPosition(),
+        visible: targetShape.mesh?.visible
+      });
+    }
 
     if (!cuttingShape) {
       console.error('🔴 Cutting shape not found:', cuttingShapeId);
@@ -394,28 +424,65 @@ export class SocketEventHandler {
     }
 
     if (!targetShape) {
-      console.error('🔴 Target shape not found:', targetShapeId);
+      console.error('🔴 TARGET SHAPE NOT FOUND:', targetShapeId);
       console.log('🔧 Available shapes:', this.app.shapeManager.getAllShapes().map(s => ({id: s.id, type: s.type})));
       return;
     }
 
-    console.log('🔧 Starting boolean operation:', operation, 'cutting:', cuttingShape.type, 'from:', targetShape.type);
+    console.log('🔧 STARTING BOOLEAN OPERATION:', operation, 'cutting:', cuttingShape.type, 'from:', targetShape.type);
+    console.log('🔧 Cutting shape position:', cuttingShape.getPosition());
+    console.log('🔧 Target shape position:', targetShape.getPosition());
 
     // Perform the boolean operation using the client's BooleanManager
+    console.log('🔧 Checking if BooleanManager is available...');
     if (this.app.booleanManager) {
+      console.log('🔧 BooleanManager found, checking if active:', this.app.booleanManager.isActive());
       let success = false;
 
       switch (operation) {
         case 'subtract':
-          console.log('🔧 Calling applySubtract on BooleanManager');
+          console.log('🔧 PROCESSING SUBTRACT OPERATION');
+          console.log('🔧 Setting cutting object temporarily...');
+          // Temporarily set the cutting object for the boolean operation
+          const originalCuttingObject = this.app.booleanManager.cuttingObject;
+          console.log('🔧 Original cutting object:', originalCuttingObject?.id || 'none');
+          this.app.booleanManager.cuttingObject = cuttingShape;
+          console.log('🔧 Set cutting object to:', cuttingShape.id);
+
+
+          console.log('🔧 CALLING applySubtract...');
           success = this.app.booleanManager.applySubtract(targetShape);
           console.log('🔧 applySubtract returned:', success);
+
+          // Restore original cutting object (should be null)
+          this.app.booleanManager.cuttingObject = originalCuttingObject;
+          console.log('🔧 Restored original cutting object:', originalCuttingObject?.id || 'none');
+
+          if (success) {
+            console.log('✅ BOOLEAN SUBTRACT OPERATION SUCCEEDED!');
+            console.log('✅ Target shape after operation:', targetShape.getPosition());
+
+            // Broadcast the geometry change to persist it
+            if (this.app.socketManager && this.app.socketManager.isConnected) {
+              const geometryData = targetShape.serializeGeometry();
+              if (geometryData) {
+                const updateData = {
+                  id: targetShape.id,
+                  geometry: geometryData
+                };
+                this.app.socketManager.sendObjectUpdate(targetShape.id, updateData);
+                console.log('🔧 Geometry update sent to server');
+              }
+            }
+          } else {
+            console.error('🔴 BOOLEAN SUBTRACT OPERATION FAILED!');
+            console.error('🔴 applySubtract returned false for target:', targetShape.id, 'cutting:', cuttingShape.id);
+          }
           break;
         case 'union':
-          // For union, we want to combine two shapes
-          // The BooleanManager currently only supports subtract, so we'll simulate union by keeping both shapes
           console.log('🔧 Boolean union requested - union operation not yet implemented, keeping both shapes');
           success = true; // Don't fail, just keep both shapes
+          console.log('✅ Union operation completed (no-op)');
           break;
         case 'intersect':
           // TODO: Implement intersect if needed
@@ -423,14 +490,16 @@ export class SocketEventHandler {
           success = false;
           break;
         default:
-          console.error('🔴 Unknown boolean operation:', operation);
-          return;
+          console.error('🔴 UNKNOWN BOOLEAN OPERATION:', operation);
+          success = false;
+          break;
       }
 
+      console.log('🔧 Boolean operation processing complete. Success:', success);
       if (success) {
-        console.log('🔧 Boolean operation completed successfully');
+        console.log('✅ AI BOOLEAN OPERATION COMPLETED SUCCESSFULLY');
       } else {
-        console.error('🔴 Boolean operation failed - check BooleanManager.applySubtract');
+        console.error('🔴 AI BOOLEAN OPERATION FAILED - check BooleanManager.applySubtract');
       }
     } else {
       console.error('🔴 BooleanManager not available');

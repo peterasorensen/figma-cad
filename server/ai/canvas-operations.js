@@ -940,12 +940,33 @@ async function handleBooleanSubtract(args, canvasId, userId, io) {
   try {
     // Emit boolean operation event to all clients in the canvas
     // The client will perform the actual CSG operation using three-csg-ts
+    console.log('🔧 SERVER: Emitting boolean-operation event to canvas:', canvasId, {
+      operation: 'subtract',
+      cuttingShapeId: cuttingShape.id,
+      targetShapeId: targetShape.id,
+      timestamp: Date.now()
+    });
+
+    // Test: emit to the room first to check if room exists
+    console.log('🔧 SERVER: Room canvas:' + canvasId + ' has', io.sockets.adapter.rooms.get('canvas:' + canvasId)?.size || 0, 'clients');
+
     io.to("canvas:" + canvasId).emit('boolean-operation', {
       operation: 'subtract',
       cuttingShapeId: cuttingShape.id,
       targetShapeId: targetShape.id,
       timestamp: Date.now()
-    })
+    });
+
+    console.log('🔧 SERVER: Boolean-operation event emitted successfully');
+
+    // Test: emit a test event to verify room communication
+    io.to("canvas:" + canvasId).emit('test-event', {
+      message: 'This is a test event',
+      canvasId: canvasId,
+      timestamp: Date.now()
+    });
+
+    console.log('🔧 SERVER: Test event also emitted to canvas:', canvasId);
 
     return {
       message: "Performed boolean subtract operation: cut " + cuttingShape.type + " from " + targetShape.type + ".",
