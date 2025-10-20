@@ -10,6 +10,9 @@ import {
   removeUserSession
 } from '../canvas/canvas-operations.js'
 
+// Map to store throttled object update timeouts
+const objectUpdates = new Map()
+
 export function setupSocketHandlers(io) {
   // Socket.io connection handling
   io.on('connection', (socket) => {

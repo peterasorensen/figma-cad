@@ -77,6 +77,7 @@ export class AIChat {
               <div class="ai-example">"Create a red rectangle in the center"</div>
               <div class="ai-example">"Add a blue sphere at position 5, 3, 5"</div>
               <div class="ai-example">"Make a login form with username and password"</div>
+              <div class="ai-example">"Build a navigation bar with 4 menu items"</div>
               <div class="ai-example">"Create a grid of 2x2 boxes"</div>
               <div class="ai-example">"Add a green torus at 0, 2, 0"</div>
               <div class="ai-example">"Move all red spheres to the center"</div>

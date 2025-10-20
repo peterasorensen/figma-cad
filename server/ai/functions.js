@@ -79,7 +79,7 @@ export const aiFunctions = {
         },
         rotation_x: {
           type: 'number',
-          description: 'X rotation in radians (use Math.PI/2 for flat text in 2D layouts)'
+          description: 'X rotation in radians (text by default is standing straight up along x-axis, use 3*Math.PI/2 to lie flat)'
         },
         rotation_y: {
           type: 'number',
@@ -455,8 +455,8 @@ export function setupAIChatEndpoint(app, io) {
 CANVAS SYSTEM:
 - 50x50 unit canvas (-25 to +25 in X/Z)
 - For 2D layouts: use XY plane (y=0.05 for shapes, y=1 for text)
-- Text rotation: rotate 90 degrees forward (rotation_x: Math.PI/2) so text lies flat
-- Font sizes: 1-3 units for readability in 50x50 space
+- Text rotation: no rotation means text is straight up and down along x axis
+- Font sizes: 1 font size per unit for readability in 50x50 space
 
 INTELLIGENT 2D LAYOUTS:
 FORMS: Group input fields vertically, labels left of inputs, buttons at bottom
@@ -465,6 +465,9 @@ FORMS: Group input fields vertically, labels left of inputs, buttons at bottom
 - Labels: text positioned near inputs
 - Buttons: colored rectangles with centered text
 - Space elements 2-3 units apart logically
+- Text: DEFAULT Y/Z rotation with x rotation by 3*Math.PI/2 intelligently to lie flat
+- AVOID stacking text directly on top of each other on the xy plane when generating more 2d-like requests
+
 
 POSTERS/LAYOUTS: Use visual hierarchy - titles at top, content below, balanced spacing
 
@@ -475,9 +478,12 @@ COLOR PATTERNS:
 - Text: black/dark gray (#000000, #333333)
 
 POSITIONING RULES:
+- Position coordinates (x, y, z) refer to the CENTER/MIDPOINT of each shape
 - Center layouts around x=0, use z-depth for layering
 - Text always at y=1, rotated flat for 2D layouts
 - Group related elements, maintain visual balance
+- When creating forms/layouts, calculate positions so the center of each element aligns with the intended layout position
+- Width/depth of shapes are in units of 1 (50x50 canvas), same for position coordinates
 
 Current canvas (${canvasContext.length} shapes):
 ${canvasContext.map(shape =>

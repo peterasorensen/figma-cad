@@ -11,37 +11,37 @@ export async function executeCanvasFunction(functionName, args, canvasId, userId
 
   switch (functionName) {
     case 'createShape':
-      return await handleCreateShape(args, canvasId, userId)
+      return await handleCreateShape(args, canvasId, userId, io)
 
     case 'moveShape':
-      return await handleMoveShape(args, canvasId, userId)
+      return await handleMoveShape(args, canvasId, userId, io)
 
     case 'resizeShape':
-      return await handleResizeShape(args, canvasId, userId)
+      return await handleResizeShape(args, canvasId, userId, io)
 
     case 'rotateShape':
-      return await handleRotateShape(args, canvasId, userId)
+      return await handleRotateShape(args, canvasId, userId, io)
 
     case 'deleteShape':
-      return await handleDeleteShape(args, canvasId, userId)
+      return await handleDeleteShape(args, canvasId, userId, io)
 
     case 'getCanvasState':
       return await handleGetCanvasState(canvasId)
 
     case 'arrangeShapes':
-      return await handleArrangeShapes(args, canvasId, userId)
+      return await handleArrangeShapes(args, canvasId, userId, io)
 
     case 'createGrid':
-      return await handleCreateGrid(args, canvasId, userId)
+      return await handleCreateGrid(args, canvasId, userId, io)
 
     case 'moveToPosition':
-      return await handleMoveToPosition(args, canvasId, userId)
+      return await handleMoveToPosition(args, canvasId, userId, io)
 
     case 'booleanSubtract':
-      return await handleBooleanSubtract(args, canvasId, userId)
+      return await handleBooleanSubtract(args, canvasId, userId, io)
 
     case 'booleanUnion':
-      return await handleBooleanUnion(args, canvasId, userId)
+      return await handleBooleanUnion(args, canvasId, userId, io)
 
     // case 'booleanIntersect':
     //   return await handleBooleanIntersect(args, canvasId, userId)
@@ -52,7 +52,7 @@ export async function executeCanvasFunction(functionName, args, canvasId, userId
 }
 
 // Canvas function implementations
-async function handleCreateShape(args, canvasId, userId) {
+async function handleCreateShape(args, canvasId, userId, io) {
   const {
     type,
     x = 0,
@@ -198,7 +198,7 @@ async function handleCreateShape(args, canvasId, userId) {
   }
 }
 
-async function handleMoveShape(args, canvasId, userId) {
+async function handleMoveShape(args, canvasId, userId, io) {
   const { shapeId, x, y, z, shapeDescription } = args
 
   let targetShapeIds = shapeId ? [shapeId] : []
@@ -287,7 +287,7 @@ async function handleMoveShape(args, canvasId, userId) {
   }
 }
 
-async function handleResizeShape(args, canvasId, userId) {
+async function handleResizeShape(args, canvasId, userId, io) {
   const { shapeId, width, height, scale = 1, shapeDescription } = args
 
   let targetShapeIds = shapeId ? [shapeId] : []
@@ -375,7 +375,7 @@ async function handleResizeShape(args, canvasId, userId) {
   }
 }
 
-async function handleRotateShape(args, canvasId, userId) {
+async function handleRotateShape(args, canvasId, userId, io) {
   const { shapeId, degrees, shapeDescription } = args
 
   let targetShapeIds = shapeId ? [shapeId] : []
@@ -445,7 +445,7 @@ async function handleRotateShape(args, canvasId, userId) {
   }
 }
 
-async function handleDeleteShape(args, canvasId, userId) {
+async function handleDeleteShape(args, canvasId, userId, io) {
   const { shapeId, shapeDescription } = args
 
   let targetShapeIds = shapeId ? [shapeId] : []
@@ -550,7 +550,7 @@ async function handleGetCanvasState(canvasId) {
   }
 }
 
-async function handleArrangeShapes(args, canvasId, userId) {
+async function handleArrangeShapes(args, canvasId, userId, io) {
   const { shapeIds, layout, spacing = 50, startX = 0, startY = 0, columns, shapeDescription } = args
 
   let targetShapeIds = shapeIds
@@ -682,7 +682,7 @@ async function handleArrangeShapes(args, canvasId, userId) {
   }
 }
 
-async function handleCreateGrid(args, canvasId, userId) {
+async function handleCreateGrid(args, canvasId, userId, io) {
   const {
     shapeType,
     rows,
@@ -735,7 +735,7 @@ async function handleCreateGrid(args, canvasId, userId) {
   }
 }
 
-async function handleMoveToPosition(args, canvasId, userId) {
+async function handleMoveToPosition(args, canvasId, userId, io) {
   const { shapeDescription, position, height } = args
 
   if (!shapeDescription) {
@@ -845,7 +845,7 @@ async function handleMoveToPosition(args, canvasId, userId) {
   }
 }
 
-async function handleBooleanSubtract(args, canvasId, userId) {
+async function handleBooleanSubtract(args, canvasId, userId, io) {
   const { cuttingShapeDescription, targetShapeDescription, cuttingShapeId, targetShapeId } = args
 
   // Get all shapes
@@ -940,7 +940,7 @@ async function handleBooleanSubtract(args, canvasId, userId) {
   }
 }
 
-async function handleBooleanUnion(args, canvasId, userId) {
+async function handleBooleanUnion(args, canvasId, userId, io) {
   const { shape1Description, shape2Description, shape1Id, shape2Id } = args
 
   // Get all shapes
