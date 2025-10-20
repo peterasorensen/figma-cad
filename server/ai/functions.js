@@ -602,7 +602,7 @@ IMPORTANT: Always use the EXACT text from the user's request as the shapeDescrip
           function: func
         })),
         tool_choice: 'auto', // Allow multiple tool calls
-        max_completion_tokens: 64000,
+        max_completion_tokens: 16000,
         temperature: 1
       })
 
