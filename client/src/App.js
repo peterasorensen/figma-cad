@@ -345,6 +345,7 @@ export class App {
   }
 
   onUserSignedOut() {
+    console.log('onUserSignedOut called - user signed out')
     // Disconnect socket
     socketManager.disconnect();
 
@@ -379,6 +380,7 @@ export class App {
 
     // Update UI
     this.uiManager.updateAuthUI();
+    console.log('onUserSignedOut completed')
   }
 
 

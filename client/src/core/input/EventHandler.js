@@ -92,14 +92,26 @@ export class EventHandler {
 
     // Authentication button
     const authButton = document.getElementById('auth-button');
+    console.log('Setting up auth button handler, button found:', !!authButton)
     if (authButton) {
-      authButton.addEventListener('click', () => {
+      console.log('Auth button text:', authButton.textContent)
+      authButton.addEventListener('click', async () => {
+        console.log('Auth button clicked, isAuthenticated:', this.app.auth.isAuthenticated)
         if (this.app.auth.isAuthenticated) {
-          this.app.auth.signOut();
+          console.log('Calling signOut...')
+          try {
+            await this.app.auth.signOut();
+            console.log('signOut completed successfully')
+          } catch (error) {
+            console.error('signOut failed:', error)
+          }
         } else {
+          console.log('Opening auth modal...')
           this.app.authModal.open();
         }
       });
+    } else {
+      console.error('Auth button not found in DOM!')
     }
 
     // New canvas button

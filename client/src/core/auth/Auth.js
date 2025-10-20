@@ -24,9 +24,10 @@ export class Auth {
 
     // Listen for auth changes
     supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log('Auth state change:', event, session?.user?.email)
+      console.log('Auth state change:', event, session?.user?.email, 'user exists:', !!session?.user)
       this.session = session
       this.user = session?.user ?? null
+      console.log('Updated user state:', this.user ? 'authenticated' : 'signed out')
 
       // Handle email confirmation required - check for SIGNED_UP event
       if (event === 'SIGNED_UP') {
@@ -34,6 +35,7 @@ export class Auth {
         this.onEmailConfirmationRequired?.(this.user?.email || 'unknown')
       }
 
+      console.log('Calling onAuthStateChange callback with user:', this.user ? this.user.email : 'null')
       this.onAuthStateChange?.(this.user)
     })
   }
@@ -59,8 +61,24 @@ export class Auth {
   }
 
   async signOut() {
-    const { error } = await supabase.auth.signOut()
-    if (error) throw error
+    console.log('Auth.signOut called')
+    try {
+      const { error } = await supabase.auth.signOut()
+      if (error) {
+        console.error('Sign out error:', error)
+        throw error
+      }
+      console.log('Sign out successful - clearing local state')
+      // Immediately clear local auth state to ensure UI updates
+      this.user = null
+      this.session = null
+      // Trigger the callback manually to ensure UI updates
+      console.log('Manually triggering onAuthStateChange callback')
+      this.onAuthStateChange?.(null)
+    } catch (error) {
+      console.error('Sign out failed:', error)
+      throw error
+    }
   }
 
   async resetPassword(email) {
