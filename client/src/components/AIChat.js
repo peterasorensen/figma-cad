@@ -102,11 +102,11 @@ export class AIChat {
 
       .ai-chat-bar {
         position: relative;
-        background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+        background: linear-gradient(135deg, #f5f5f5 0%, #e8e8e8 100%);
         backdrop-filter: blur(20px);
-        border: 1px solid rgba(0, 0, 0, 0.1);
+        border: 1px solid rgba(0, 0, 0, 0.08);
         border-radius: 25px;
-        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
         pointer-events: all;
         transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
       }
@@ -260,7 +260,7 @@ export class AIChat {
         right: 0;
         background: rgba(255, 255, 255, 0.95);
         backdrop-filter: blur(20px);
-        border-radius: 20px 20px 0 0;
+        border-radius: 20px;
         border: 1px solid rgba(0, 0, 0, 0.1);
         border-bottom: none;
         box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.15);
@@ -283,8 +283,9 @@ export class AIChat {
         align-items: center;
         justify-content: space-between;
         padding: 16px 24px;
-        background: linear-gradient(135deg, #f5f5f5 0%, #e8e8e8 100%);
-        border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+        background: linear-gradient(135deg, #f0f0f0 0%, #e3e3e3 100%);
+        border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+        border-radius: 20px 20px 0 0;
       }
 
       .ai-chat-expanded-title {
