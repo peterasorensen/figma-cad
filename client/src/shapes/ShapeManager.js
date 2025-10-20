@@ -349,16 +349,10 @@ export class ShapeManager {
 
   /**
    * Create shape from remote data (for synchronization)
-   * Geometry is the single source of truth - avoids double allocation
+   * If geometry is present, uses it directly. Otherwise falls back to creating from type/properties.
    */
   createShapeFromData(data) {
     try {
-      // Geometry must be present
-      if (!data.geometry) {
-        console.error('Cannot create shape without geometry data:', data.id);
-        return null;
-      }
-
       const position = {
         x: data.position_x || 0,
         y: data.position_y || 0,
@@ -373,29 +367,93 @@ export class ShapeManager {
         }
       };
 
+      // Build properties from database columns
       const properties = {
-        color: data.color || '#ffffff'
+        color: data.color || '#ffffff',
+        width: data.width,
+        height: data.height,
+        depth: data.depth
       };
 
-      // Deserialize geometry first (static method, no shape instance needed)
-      const geometry = Shape.deserializeGeometry(data.geometry);
-
-      if (!geometry) {
-        console.error('Failed to deserialize geometry for shape:', data.id);
-        return null;
+      // For text shapes, extract text from geometry if it exists
+      if (data.type === 'text' && data.geometry) {
+        try {
+          const geometryData = JSON.parse(data.geometry);
+          if (geometryData.text) {
+            properties.text = geometryData.text;
+            properties.fontSize = geometryData.fontSize || 16;
+          }
+        } catch (e) {
+          console.warn('Failed to parse text geometry data:', e);
+        }
       }
 
-      // Create shape directly from geometry (avoids double allocation)
-      const shape = this.createShape(data.type, position, properties, data.id, transform, geometry);
+      let shape;
 
-      if (shape) {
-        console.log(`✓ Created shape from geometry: ${data.id}`);
+      // If geometry is present, try to use it (preferred path for existing shapes)
+      if (data.geometry && data.geometry !== '') {
+        try {
+          // Deserialize geometry first (static method, no shape instance needed)
+          const geometry = Shape.deserializeGeometry(data.geometry);
+
+          if (geometry) {
+            // Create shape directly from geometry (avoids double allocation)
+            shape = this.createShape(data.type, position, properties, data.id, transform, geometry);
+            console.log(`✓ Created shape from geometry: ${data.id}`);
+          }
+        } catch (error) {
+          console.warn(`Failed to deserialize geometry for shape ${data.id}, falling back to type-based creation:`, error);
+        }
+      }
+
+      // If geometry creation failed or no geometry provided, create from type (fallback path)
+      if (!shape) {
+        shape = this.createShape(data.type, position, properties, data.id, transform, null);
+        if (shape) {
+          console.log(`✓ Created shape from type (no geometry): ${data.id}`);
+
+          // For AI-created shapes, we need to serialize and store the geometry
+          // so it persists in the database for future sessions
+          setTimeout(() => {
+            this.updateShapeGeometryInDatabase(shape);
+          }, 100); // Small delay to ensure shape is fully initialized
+        }
       }
 
       return shape;
     } catch (error) {
       console.error('Error creating shape from data:', error);
       return null;
+    }
+  }
+
+  /**
+   * Update shape geometry in database (for AI-created shapes that need geometry persistence)
+   */
+  updateShapeGeometryInDatabase(shape) {
+    if (!shape || !shape.mesh) return;
+
+    try {
+      const geometryData = shape.serializeGeometry();
+      if (!geometryData) {
+        console.warn('Failed to serialize geometry for shape:', shape.id);
+        return;
+      }
+
+      // Send only the geometry data to update the database record
+      const updateData = {
+        geometry: geometryData
+      };
+
+      // Import socketManager dynamically to avoid circular imports
+      import('../core/network/SocketManager.js').then(({ socketManager }) => {
+        if (socketManager.isConnected) {
+          socketManager.updateObject(shape.id, updateData);
+          console.log('📤 Updated geometry in database for AI-created shape:', shape.id);
+        }
+      });
+    } catch (error) {
+      console.error('Error updating shape geometry in database:', error);
     }
   }
 

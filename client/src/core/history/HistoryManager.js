@@ -154,6 +154,66 @@ export class HistoryManager {
   }
 
   /**
+   * Push an AI bulk action (for undoable AI operations)
+   * Captures before/after states for all shapes affected by an AI command
+   */
+  pushAIBulkAction(shapeIds, shapeManager, aiCommand = '', selectedShapeIds = []) {
+    if (this.isRestoring) return;
+
+    const shapes = [];
+    for (const id of shapeIds) {
+      const shape = shapeManager.shapes.get(id);
+      if (shape) {
+        shapes.push({
+          id: shape.id,
+          type: shape.type,
+          before: {
+            position: { ...shape.getPosition() },
+            rotation: { ...shape.getRotation() },
+            properties: { ...shape.properties },
+            geometry: shape.serializeGeometry() // Capture full geometry snapshot
+          }
+          // after state will be captured when action is committed
+        });
+      }
+    }
+
+    const action = {
+      type: 'ai-bulk',
+      timestamp: Date.now(),
+      aiCommand: aiCommand,
+      shapes: shapes,
+      selectedShapes: [...selectedShapeIds]
+    };
+
+    this.pushAction(action);
+    return action; // Return action so we can commit it later
+  }
+
+  /**
+   * Commit an AI bulk action by capturing after states
+   */
+  commitAIBulkAction(pendingAction, shapeManager) {
+    if (this.isRestoring || !pendingAction) return;
+
+    // Capture after state for all affected shapes
+    for (const shapeData of pendingAction.shapes) {
+      const shape = shapeManager.shapes.get(shapeData.id);
+      if (shape) {
+        shapeData.after = {
+          position: { ...shape.getPosition() },
+          rotation: { ...shape.getRotation() },
+          properties: { ...shape.properties },
+          geometry: shape.serializeGeometry()
+        };
+      }
+    }
+
+    // Mark action as committed (no need to push again, it's already in history)
+    pendingAction.committed = true;
+  }
+
+  /**
    * Push an action to history
    */
   pushAction(action) {

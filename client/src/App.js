@@ -6,6 +6,7 @@ import { Raycaster } from './core/interaction/Raycaster.js';
 import { Transform } from './core/interaction/Transform.js';
 import { ShapeManager } from './shapes/ShapeManager.js';
 import { AuthModal } from './components/AuthModal.js';
+import { AIChat } from './components/AIChat.js';
 import { auth, supabase } from './core/auth/Auth.js';
 import { socketManager } from './core/network/SocketManager.js';
 import { CursorManager } from './core/render/CursorManager.js';
@@ -38,6 +39,7 @@ export class App {
     this.socketEventHandler = null;
     this.eventHandler = null;
     this.historyHelper = null;
+    this.aiChat = null;
     this.currentCanvasId = null;
     this.currentTool = 'select';
     this.mouseDownPosition = null;
@@ -103,6 +105,9 @@ export class App {
     // Initialize remaining helper classes
     this.socketEventHandler = new SocketEventHandler(this);
     this.eventHandler = new EventHandler(this);
+
+    // Initialize AI Chat
+    this.aiChat = new AIChat(this);
 
     // Set up transform controls callbacks
     this.transform.setChangeCallback((object) => {
@@ -711,6 +716,9 @@ export class App {
     }
     if (this.authModal) {
       this.authModal.dispose();
+    }
+    if (this.aiChat) {
+      this.aiChat.dispose();
     }
     if (socketManager) {
       socketManager.disconnect();
