@@ -110,6 +110,14 @@ export class EventHandler {
       });
     }
 
+    // Clear canvas button
+    const clearCanvasButton = document.getElementById('clear-canvas');
+    if (clearCanvasButton) {
+      clearCanvasButton.addEventListener('click', () => {
+        this.clearCanvas();
+      });
+    }
+
     // Share canvas button
     const shareButton = document.getElementById('share-canvas');
     if (shareButton) {
@@ -541,6 +549,16 @@ export class EventHandler {
       console.error('Error creating new canvas:', error);
       // Show error notification
       this.app.uiManager.showNotification('Failed to create new canvas', 'error');
+    }
+  }
+
+  /**
+   * Clear the entire canvas with confirmation
+   */
+  clearCanvas() {
+    // Show confirmation dialog
+    if (confirm('Warning: This will clear the entire canvas and remove all shapes. This action cannot be undone. Are you sure?')) {
+      this.app.clearCanvas();
     }
   }
 

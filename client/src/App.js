@@ -613,6 +613,40 @@ export class App {
     this.historyHelper.redo();
   }
 
+  /**
+   * Clear the entire canvas
+   */
+  clearCanvas() {
+    console.log('Clearing entire canvas...');
+
+    // Get all shape IDs before clearing
+    const allShapeIds = Array.from(this.shapeManager.shapes.keys());
+
+    if (allShapeIds.length === 0) {
+      this.uiManager.showNotification('Canvas is already empty', 'info');
+      return;
+    }
+
+    // Record the delete action in history for undo/redo
+    if (this.historyManager) {
+      this.historyManager.pushDelete(allShapeIds, this.shapeManager);
+      this.uiManager.updateUndoRedoButtonStates();
+    }
+
+    // Clear all shapes
+    this.shapeManager.clear();
+
+    // Broadcast clear action to other users
+    if (this.socketManager && this.socketManager.isConnected && this.currentCanvasId) {
+      // Send delete messages for each shape
+      allShapeIds.forEach(shapeId => {
+        this.socketManager.deleteObject(shapeId);
+      });
+    }
+
+    this.uiManager.showNotification(`Cleared ${allShapeIds.length} shape(s) from canvas`, 'success');
+  }
+
 
 
 

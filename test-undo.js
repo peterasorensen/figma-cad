@@ -1,5 +1,5 @@
 // Simple test script for undo functionality
-import { HistoryManager } from './client/src/core/HistoryManager.js';
+import { HistoryManager } from './client/src/core/history/HistoryManager.js';
 
 // Mock shape manager for testing
 class MockShapeManager {
