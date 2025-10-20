@@ -169,6 +169,18 @@
       top: 20px; /* Just below the header */
       right: 20px;
       z-index: 10;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    #top-right-controls .clear-button {
+      align-self: flex-end;
+    }
+
+    .undo-redo-container {
+      display: flex;
+      gap: 8px;
     }
 
     .clear-button {
@@ -191,6 +203,30 @@
       background: #c82333;
       box-shadow: 0 4px 8px rgba(220, 53, 69, 0.4);
       transform: translateY(-1px);
+    }
+
+    /* Tooltip for clear button */
+    .clear-button::after {
+      content: attr(data-tooltip);
+      position: absolute;
+      right: 100%;
+      top: 50%;
+      transform: translateY(-50%);
+      margin-right: 12px;
+      background: rgba(0, 0, 0, 0.9);
+      color: white;
+      padding: 6px 10px;
+      border-radius: 4px;
+      font-size: 12px;
+      white-space: nowrap;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s;
+      z-index: 1000;
+    }
+
+    .clear-button:hover::after {
+      opacity: 1;
     }
 
     .clear-button:active {
@@ -238,6 +274,28 @@
       background: #5a8fd6;
     }
 
+    /* Tooltip for view buttons */
+    .view-button::after {
+      content: attr(data-tooltip);
+      position: absolute;
+      transform: translateX(-100%) translateY(-200%);
+      margin-bottom: 8px;
+      background: rgb(0, 0, 0);
+      color: white;
+      padding: 6px 10px;
+      border-radius: 4px;
+      font-size: 12px;
+      white-space: nowrap;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s;
+      z-index: 1000;
+    }
+
+    .view-button:hover::after {
+      opacity: 1;
+    }
+
     /* Bottom controls */
     #bottom-controls {
       position: absolute;
@@ -281,15 +339,13 @@
     .bottom-button::after {
       content: attr(data-tooltip);
       position: absolute;
-      bottom: 100%;
-      left: 50%;
-      transform: translateX(-50%);
-      margin-bottom: 8px;
-      background: rgba(0, 0, 0, 0.9);
+      transform: translateY(125%) translateX(-50%);
+      margin-right: 12px;
+      background: rgb(0, 0, 0);
       color: white;
       padding: 6px 10px;
       border-radius: 4px;
-      font-size: 11px;
+      font-size: 12px;
       white-space: nowrap;
       opacity: 0;
       pointer-events: none;
@@ -376,6 +432,46 @@
       transform: translateY(-200%) translateX(-20%);
     }
 
+    /* Simple Shapes Dropdown */
+    .simple-shapes-dropdown {
+      position: relative;
+    }
+
+    .simple-shapes-button {
+      position: relative;
+      width: 100%;
+    }
+
+    .simple-shapes-menu {
+      position: absolute;
+      top: 0;
+      left: 100%;
+      background: rgba(42, 42, 42, 0.95);
+      border: 1px solid #3a3a3a;
+      border-radius: 8px;
+      padding: 8px;
+      display: none;
+      z-index: 1001;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+      margin-left: -4px;
+      flex-direction: column;
+      gap: 4px;
+      min-width: 120px;
+    }
+
+    .simple-shapes-dropdown:hover .simple-shapes-menu {
+      display: flex;
+    }
+
+    .simple-shapes-menu .tool-button {
+      width: 100%;
+      text-align: left;
+      padding: 8px 12px;
+      font-size: 13px;
+      border-radius: 4px;
+      margin: 0;
+    }
+
     /* Complex Shapes Dropdown */
     .complex-shapes-dropdown {
       position: relative;
@@ -397,7 +493,7 @@
       display: none;
       z-index: 1001;
       box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-      margin-left: 4px;
+      margin-left: -4px;
       flex-direction: column;
       gap: 4px;
       min-width: 120px;
@@ -689,11 +785,18 @@
       <div id="toolbar">
         <button class="tool-button tooltip" data-tool="select" data-tooltip="Select (V)">Select</button>
         <button class="tool-button tooltip" data-tool="multiselect" data-tooltip="Multi-Select (M)">Multi-Select</button>
-        <button class="tool-button tooltip" data-tool="box" data-tooltip="Box (B)">Box</button>
-        <button class="tool-button tooltip" data-tool="sphere" data-tooltip="Sphere (S)">Sphere</button>
-        <button class="tool-button tooltip" data-tool="cylinder" data-tooltip="Cylinder (C)">Cylinder</button>
-        <button class="tool-button tooltip" data-tool="rectangle" data-tooltip="Rectangle (R)">Rectangle</button>
-        <button class="tool-button tooltip" data-tool="circle" data-tooltip="Circle (O)">Circle</button>
+
+        <div class="simple-shapes-dropdown">
+          <button class="tool-button tooltip simple-shapes-button" data-tooltip="Simple Shapes">Simple ▶</button>
+          <div class="simple-shapes-menu">
+            <button class="tool-button tooltip" data-tool="box" data-tooltip="Box (B)">Box</button>
+            <button class="tool-button tooltip" data-tool="sphere" data-tooltip="Sphere (S)">Sphere</button>
+            <button class="tool-button tooltip" data-tool="cylinder" data-tooltip="Cylinder (C)">Cylinder</button>
+            <button class="tool-button tooltip" data-tool="rectangle" data-tooltip="Rectangle (R)">Rectangle</button>
+            <button class="tool-button tooltip" data-tool="circle" data-tooltip="Circle (O)">Circle</button>
+          </div>
+        </div>
+
         <button class="tool-button tooltip" data-tool="text" data-tooltip="Text (T)">Text</button>
         <button class="tool-button tooltip" data-tool="boolean-subtract" data-tooltip="Boolean Subtract (U)">Boolean -</button>
 
@@ -728,6 +831,20 @@
           </svg>
           Clear Canvas
         </button>
+        <div class="undo-redo-container">
+          <button id="undo-button" class="bottom-button" disabled data-tooltip="Undo (Cmd+Z)">
+            <svg viewBox="0 0 24 24" fill="currentColor">
+              <path d="M12.5 8c-2.65 0-5.05.99-6.9 2.6L3.71 8.71C3.08 8.08 2 8.52 2 9.41V15c0 .89.89 1.34 1.41.71l1.89-1.89c1.5-1.5 3.57-2.43 5.7-2.43 4.42 0 8 3.58 8 8s-3.58 8-8 8c-1.55 0-3-.45-4.24-1.21C6.22 25.49 7.07 24 8.5 24c.83 0 1.5-.67 1.5-1.5S9.33 21 8.5 21c-1.38 0-2.5.48-3.34 1.34C6.58 21.48 8.5 19.5 8.5 16c0-3.31-2.69-6-6-6s-6 2.69-6 6c0 1.66.67 3.16 1.76 4.24l-1.42 1.42C-3.08 21.08-2.64 20-1.41 20h5.59c.89 0 .71 1.08.29 1.41l-1.42 1.42C2.24 23.93 1.34 23.27 1.34 22.38V16.8c0-.89 1.08-.71 1.41.29l1.42 1.42C5.05 17.01 7.45 16 10.1 16c2.65 0 5.05.99 6.9 2.6l1.89-1.89c.63-.63-.52-1.71-1.41-.71l-1.89 1.89C14.05 19.49 12.65 20 11.1 20c-4.42 0-8-3.58-8-8s3.58-8 8-8c-1.55 0-3 .45-4.24 1.21C15.78 6.49 14.93 8 13.5 8c-.83 0-1.5.67-1.5 1.5s.67 1.5 1.5 1.5c1.38 0 2.5-.48 3.34-1.34C17.42 10.52 19.34 12.5 19.34 16c0 3.31-2.69 6-6 6s-6-2.69-6-6c0-1.66-.67-3.16-1.76-4.24l1.42-1.42c.63.63 1.71-.52.71-1.41l-1.42-1.42C6.95 6.99 8.45 6 11.1 6c4.42 0 8 3.58 8 8s-3.58 8-8 8c-1.55 0-3-.45-4.24-1.21C6.22 19.49 7.07 18 8.5 18c.83 0 1.5-.67 1.5-1.5S9.33 15 8.5 15c-1.38 0-2.5.48-3.34 1.34C6.58 14.48 8.5 12.5 8.5 9c0-3.31-2.69-6-6-6z"/>
+            </svg>
+            Undo
+          </button>
+          <button id="redo-button" class="bottom-button" disabled data-tooltip="Redo (Cmd+Shift+Z)">
+            <svg viewBox="0 0 24 24" fill="currentColor">
+              <path d="M18.4 10.6C16.55 8.99 14.15 8 11.1 8c4.42 0 8 3.58 8 8s-3.58 8-8 8c-1.55 0-3-.45-4.24-1.21C6.22 25.49 7.07 24 8.5 24c.83 0 1.5-.67 1.5-1.5S9.33 21 8.5 21c-1.38 0-2.5.48-3.34 1.34C6.58 21.48 8.5 19.5 8.5 16c0-3.31-2.69-6-6-6s-6 2.69-6 6c0 1.66.67 3.16 1.76 4.24l-1.42 1.42C-3.08 21.08-2.64 20-1.41 20h5.59c.89 0 .71 1.08.29 1.41l-1.42 1.42C2.24 23.93 1.34 23.27 1.34 22.38V16.8c0-.89 1.08-.71 1.41.29l1.42 1.42C5.05 17.01 7.45 16 10.1 16c2.65 0 5.05.99 6.9 2.6l1.89-1.89c.63-.63-.52-1.71-1.41-.71l-1.89 1.89C14.05 19.49 12.65 20 11.1 20c-4.42 0-8-3.58-8-8s3.58-8 8-8c1.55 0 3 .45 4.24 1.21C15.78 6.49 14.93 8 13.5 8c-.83 0-1.5.67-1.5 1.5s.67 1.5 1.5 1.5c1.38 0 2.5-.48 3.34-1.34C17.42 10.52 19.34 12.5 19.34 16c0 3.31-2.69 6-6 6s-6-2.69-6-6c0-1.66-.67-3.16-1.76-4.24l1.42-1.42c.63.63 1.71-.52.71-1.41l-1.42-1.42C6.95 6.99 8.45 6 11.1 6c4.42 0 8 3.58 8 8s-3.58 8-8 8c-1.55 0-3-.45-4.24-1.21C6.22 19.49 7.07 18 8.5 18c.83 0 1.5-.67 1.5-1.5S9.33 15 8.5 15c-1.38 0-2.5.48-3.34 1.34C6.58 14.48 8.5 12.5 8.5 9c0-3.31-2.69-6-6-6z"/>
+            </svg>
+            Redo
+          </button>
+        </div>
         <button id="apply-boolean" class="clear-button tooltip" data-tooltip="Apply Boolean Operation (Enter)" style="display: none; background: #28a745; border-color: #1e7e34;">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
             <path d="M9,20.42L2.79,14.21L5.62,11.38L9,14.76L18.88,4.88L21.71,7.71L9,20.42Z"/>
@@ -737,7 +854,7 @@
       </div>
 
       <div id="view-controls">
-        <button class="view-button tooltip" id="grid-toggle" data-tooltip="Toggle Grid (G)">
+        <button class="view-button tooltip" id="grid-toggle" data-tooltip="Show Grid (G)">
           <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
             <rect x="1" y="1" width="8" height="8" fill="none" stroke="currentColor" stroke-width="1.5"/>
             <rect x="11" y="1" width="8" height="8" fill="none" stroke="currentColor" stroke-width="1.5"/>
@@ -745,7 +862,7 @@
             <rect x="11" y="11" width="8" height="8" fill="none" stroke="currentColor" stroke-width="1.5"/>
           </svg>
         </button>
-        <button class="view-button tooltip" id="snap-toggle" data-tooltip="Toggle Snap (Shift+G)">
+        <button class="view-button tooltip" id="snap-toggle" data-tooltip="Snap to Grid (Shift+G)">
           <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
             <path d="M3 3h14v2H3V3zm0 4h14v2H3V7zm0 4h14v2H3v-2zm0 4h14v2H3v-2z"/>
             <circle cx="8" cy="4" r="1.5" fill="currentColor"/>
@@ -756,20 +873,6 @@
         </button>
       </div>
 
-      <div id="bottom-controls">
-        <button id="undo-button" class="bottom-button" disabled data-tooltip="Undo (Cmd+Z)">
-          <svg viewBox="0 0 24 24" fill="currentColor">
-            <path d="M12.5 8c-2.65 0-5.05.99-6.9 2.6L3.71 8.71C3.08 8.08 2 8.52 2 9.41V15c0 .89.89 1.34 1.41.71l1.89-1.89c1.5-1.5 3.57-2.43 5.7-2.43 4.42 0 8 3.58 8 8s-3.58 8-8 8c-1.55 0-3-.45-4.24-1.21C6.22 25.49 7.07 24 8.5 24c.83 0 1.5-.67 1.5-1.5S9.33 21 8.5 21c-1.38 0-2.5.48-3.34 1.34C6.58 21.48 8.5 19.5 8.5 16c0-3.31-2.69-6-6-6s-6 2.69-6 6c0 1.66.67 3.16 1.76 4.24l-1.42 1.42C-3.08 21.08-2.64 20-1.41 20h5.59c.89 0 .71 1.08.29 1.41l-1.42 1.42C2.24 23.93 1.34 23.27 1.34 22.38V16.8c0-.89 1.08-.71 1.41.29l1.42 1.42C5.05 17.01 7.45 16 10.1 16c2.65 0 5.05.99 6.9 2.6l1.89-1.89c.63-.63-.52-1.71-1.41-.71l-1.89 1.89C14.05 19.49 12.65 20 11.1 20c-4.42 0-8-3.58-8-8s3.58-8 8-8c-1.55 0-3 .45-4.24 1.21C15.78 6.49 14.93 8 13.5 8c-.83 0-1.5.67-1.5 1.5s.67 1.5 1.5 1.5c1.38 0 2.5-.48 3.34-1.34C17.42 10.52 19.34 12.5 19.34 16c0 3.31-2.69 6-6 6s-6-2.69-6-6c0-1.66-.67-3.16-1.76-4.24l1.42-1.42c.63.63 1.71-.52.71-1.41l-1.42-1.42C6.95 6.99 8.45 6 11.1 6c4.42 0 8 3.58 8 8s-3.58 8-8 8c-1.55 0-3-.45-4.24-1.21C6.22 19.49 7.07 18 8.5 18c.83 0 1.5-.67 1.5-1.5S9.33 15 8.5 15c-1.38 0-2.5.48-3.34 1.34C6.58 14.48 8.5 12.5 8.5 9c0-3.31-2.69-6-6-6z"/>
-          </svg>
-          Undo
-        </button>
-        <button id="redo-button" class="bottom-button" disabled data-tooltip="Redo (Cmd+Shift+Z)">
-          <svg viewBox="0 0 24 24" fill="currentColor">
-            <path d="M18.4 10.6C16.55 8.99 14.15 8 11.1 8c4.42 0 8 3.58 8 8s-3.58 8-8 8c-1.55 0-3-.45-4.24-1.21C6.22 25.49 7.07 24 8.5 24c.83 0 1.5-.67 1.5-1.5S9.33 21 8.5 21c-1.38 0-2.5.48-3.34 1.34C6.58 21.48 8.5 19.5 8.5 16c0-3.31-2.69-6-6-6s-6 2.69-6 6c0 1.66.67 3.16 1.76 4.24l-1.42 1.42C-3.08 21.08-2.64 20-1.41 20h5.59c.89 0 .71 1.08.29 1.41l-1.42 1.42C2.24 23.93 1.34 23.27 1.34 22.38V16.8c0-.89 1.08-.71 1.41.29l1.42 1.42C5.05 17.01 7.45 16 10.1 16c2.65 0 5.05.99 6.9 2.6l1.89-1.89c.63-.63-.52-1.71-1.41-.71l-1.89 1.89C14.05 19.49 12.65 20 11.1 20c-4.42 0-8-3.58-8-8s3.58-8 8-8c1.55 0 3 .45 4.24 1.21C15.78 6.49 14.93 8 13.5 8c-.83 0-1.5.67-1.5 1.5s.67 1.5 1.5 1.5c1.38 0 2.5-.48 3.34-1.34C17.42 10.52 19.34 12.5 19.34 16c0 3.31-2.69 6-6 6s-6-2.69-6-6c0-1.66-.67-3.16-1.76-4.24l1.42-1.42c.63.63 1.71-.52.71-1.41l-1.42-1.42C6.95 6.99 8.45 6 11.1 6c4.42 0 8 3.58 8 8s-3.58 8-8 8c-1.55 0-3-.45-4.24-1.21C6.22 19.49 7.07 18 8.5 18c.83 0 1.5-.67 1.5-1.5S9.33 15 8.5 15c-1.38 0-2.5.48-3.34 1.34C6.58 14.48 8.5 12.5 8.5 9c0-3.31-2.69-6-6-6z"/>
-          </svg>
-          Redo
-        </button>
-      </div>
 
       <div id="canvas-container">
         <canvas id="canvas"></canvas>
