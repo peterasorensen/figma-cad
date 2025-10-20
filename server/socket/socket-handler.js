@@ -311,6 +311,36 @@ export function setupSocketHandlers(io) {
       }
     })
 
+    // Handle object lock acquisition
+    socket.on('acquire-object-lock', (data) => {
+      const session = userSessions.get(socket.id)
+      if (!session) return
+
+      console.log(`🔒 User ${session.userId} acquiring lock on object ${data.shapeId}`)
+
+      // Broadcast lock acquisition to other users in the canvas
+      socket.to(`canvas:${session.canvasId}`).emit('object-lock-acquired', {
+        shapeId: data.shapeId,
+        userId: session.userId,
+        canvasId: session.canvasId
+      })
+    })
+
+    // Handle object lock release
+    socket.on('release-object-lock', (data) => {
+      const session = userSessions.get(socket.id)
+      if (!session) return
+
+      console.log(`🔓 User ${session.userId} releasing lock on object ${data.shapeId}`)
+
+      // Broadcast lock release to other users in the canvas
+      socket.to(`canvas:${session.canvasId}`).emit('object-lock-released', {
+        shapeId: data.shapeId,
+        userId: session.userId,
+        canvasId: session.canvasId
+      })
+    })
+
     // Handle disconnect
     socket.on('disconnect', async () => {
       const currentCount = decrementConnectionCount()

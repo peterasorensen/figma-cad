@@ -1,3 +1,4 @@
+import * as THREE from 'three';
 import { Scene } from './core/render/Scene.js';
 import { Controls } from './core/input/Controls.js';
 import { Grid } from './core/render/Grid.js';
@@ -51,6 +52,7 @@ export class App {
     this.wasAuthenticated = false; // Track previous auth state
     this.onlineUsers = new Set(); // Track online users for presence display
     this.initialStateCaptured = false; // Flag to ensure initial state is only captured once
+    this.objectLocks = new Map(); // Track which objects are locked by which users
 
     this.init();
   }
@@ -130,10 +132,12 @@ export class App {
 
     this.transform.setDragStartCallback((object) => {
       this.historyHelper.beginDragCapture();
+      this.acquireObjectLock(object);
     });
 
     this.transform.setDragEndCallback((object) => {
       this.handleDragEnd(object);
+      this.releaseObjectLock(object);
     });
 
     // Set up text editing event listener
@@ -618,6 +622,173 @@ export class App {
       const selectedShapeIds = Array.from(this.shapeManager.selectedShapes);
       this.historyManager.commitUpdate(this.shapeManager, selectedShapeIds);
       this.uiManager.updateUndoRedoButtonStates();
+    }
+  }
+
+  /**
+   * Check if an object is locked by another user
+   */
+  isObjectLockedByOtherUser(object) {
+    if (!object?.userData?.shapeId) return false;
+    const lock = this.objectLocks.get(object.userData.shapeId);
+    return lock && lock.userId !== this.auth.userId;
+  }
+
+  /**
+   * Check if current user has locked an object
+   */
+  hasObjectLock(object) {
+    if (!object?.userData?.shapeId) return false;
+    const lock = this.objectLocks.get(object.userData.shapeId);
+    return lock && lock.userId === this.auth.userId;
+  }
+
+  /**
+   * Acquire lock on an object
+   */
+  acquireObjectLock(object) {
+    if (!object?.userData?.shapeId) return false;
+
+    const shapeId = object.userData.shapeId;
+    const currentLock = this.objectLocks.get(shapeId);
+
+    // If already locked by current user, extend the lock
+    if (currentLock && currentLock.userId === this.auth.userId) {
+      currentLock.timestamp = Date.now();
+      return true;
+    }
+
+    // If locked by someone else, can't acquire
+    if (currentLock) {
+      console.log(`Cannot acquire lock on ${shapeId} - locked by ${currentLock.userId}`);
+      return false;
+    }
+
+    // Acquire the lock
+    this.objectLocks.set(shapeId, {
+      userId: this.auth.userId,
+      timestamp: Date.now()
+    });
+
+    // Broadcast lock acquisition
+    if (this.socketManager.isConnected && this.currentCanvasId) {
+      this.socketManager.socket.emit('acquire-object-lock', {
+        shapeId,
+        userId: this.auth.userId,
+        canvasId: this.currentCanvasId
+      });
+    }
+
+    console.log(`Acquired lock on ${shapeId}`);
+    return true;
+  }
+
+  /**
+   * Release lock on an object
+   */
+  releaseObjectLock(object) {
+    if (!object?.userData?.shapeId) return;
+
+    const shapeId = object.userData.shapeId;
+    const lock = this.objectLocks.get(shapeId);
+
+    // Only release if we own the lock
+    if (lock && lock.userId === this.auth.userId) {
+      this.objectLocks.delete(shapeId);
+
+      // Broadcast lock release
+      if (this.socketManager.isConnected && this.currentCanvasId) {
+        this.socketManager.socket.emit('release-object-lock', {
+          shapeId,
+          userId: this.auth.userId,
+          canvasId: this.currentCanvasId
+        });
+      }
+
+      console.log(`Released lock on ${shapeId}`);
+    }
+  }
+
+  /**
+   * Handle remote lock acquisition
+   */
+  handleRemoteLockAcquired(data) {
+    const { shapeId, userId } = data;
+
+    // Don't process our own locks
+    if (userId === this.auth.userId) return;
+
+    this.objectLocks.set(shapeId, {
+      userId,
+      timestamp: Date.now()
+    });
+
+    // Update visual indicator
+    this.updateObjectLockVisual(shapeId, userId);
+
+    console.log(`Remote lock acquired: ${shapeId} by ${userId}`);
+  }
+
+  /**
+   * Handle remote lock release
+   */
+  handleRemoteLockReleased(data) {
+    const { shapeId, userId } = data;
+
+    // Only remove if it's the lock we're tracking
+    const lock = this.objectLocks.get(shapeId);
+    if (lock && lock.userId === userId) {
+      this.objectLocks.delete(shapeId);
+      this.updateObjectLockVisual(shapeId, null);
+    }
+
+    console.log(`Remote lock released: ${shapeId} by ${userId}`);
+  }
+
+  /**
+   * Update visual indicator for locked object
+   */
+  updateObjectLockVisual(shapeId, lockedByUserId) {
+    const shape = this.shapeManager?.getShape(shapeId);
+    if (!shape) return;
+
+    // Remove existing lock indicator
+    if (shape.lockIndicator) {
+      shape.mesh.remove(shape.lockIndicator);
+      shape.lockIndicator = null;
+    }
+
+    if (lockedByUserId && lockedByUserId !== this.auth.userId) {
+      // Add lock indicator for objects locked by others
+      const lockGeometry = new THREE.SphereGeometry(0.1);
+      const lockMaterial = new THREE.MeshBasicMaterial({
+        color: 0xff6b6b,
+        transparent: true,
+        opacity: 0.8
+      });
+      const lockIndicator = new THREE.Mesh(lockGeometry, lockMaterial);
+
+      // Position above the object
+      const bbox = new THREE.Box3().setFromObject(shape.mesh);
+      const center = bbox.getCenter(new THREE.Vector3());
+      const size = bbox.getSize(new THREE.Vector3());
+      lockIndicator.position.set(center.x, center.y + size.y/2 + 0.2, center.z);
+
+      shape.mesh.add(lockIndicator);
+      shape.lockIndicator = lockIndicator;
+    }
+  }
+
+  /**
+   * Clean up locks when user disconnects
+   */
+  cleanupLocksForUser(userId) {
+    // Remove all locks held by the disconnected user
+    for (const [shapeId, lock] of this.objectLocks.entries()) {
+      if (lock.userId === userId) {
+        this.objectLocks.delete(shapeId);
+        this.updateObjectLockVisual(shapeId, null);
+      }
     }
   }
 

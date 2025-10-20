@@ -387,6 +387,12 @@ export class EventHandler {
       const shape = this.app.shapeManager.findShapeByMesh(intersection.object);
 
       if (shape) {
+        // Check if this object is locked by another user
+        if (this.app.isObjectLockedByOtherUser(intersection.object)) {
+          this.app.uiManager.showNotification('This object is currently being edited by another user', 'info');
+          return; // Don't allow selection of locked objects
+        }
+
         // Shift+click for multi-select
         const addToSelection = event.shiftKey;
         this.app.shapeManager.selectShape(shape.id, addToSelection);
@@ -786,7 +792,10 @@ export class EventHandler {
       // Note: canvasY is from top (0) to bottom (height), canvasTop is smaller Y, canvasBottom is larger Y
       if (canvasX >= canvasLeft && canvasX <= canvasRight &&
           canvasY >= canvasTop && canvasY <= canvasBottom) {
-        selectedShapes.push(shape);
+        // Skip locked objects
+        if (!this.app.isObjectLockedByOtherUser(mesh)) {
+          selectedShapes.push(shape);
+        }
       }
     });
 

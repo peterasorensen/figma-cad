@@ -151,6 +151,17 @@ export class SocketManager {
         console.log('🔧 Callback called');
       })
 
+      // Object lock events
+      this.socket.on('object-lock-acquired', (data) => {
+        console.log('🔒 CLIENT SOCKET: Received object-lock-acquired event:', data);
+        this.onObjectLockAcquiredCallback?.(data);
+      });
+
+      this.socket.on('object-lock-released', (data) => {
+        console.log('🔓 CLIENT SOCKET: Received object-lock-released event:', data);
+        this.onObjectLockReleasedCallback?.(data);
+      });
+
       // Test event to verify socket communication
       this.socket.on('test-event', (data) => {
         console.log('🔧 CLIENT SOCKET: Received test-event:', data);
@@ -315,6 +326,14 @@ export class SocketManager {
 
   onBooleanOperation(callback) {
     this.onBooleanOperationCallback = callback
+  }
+
+  onObjectLockAcquired(callback) {
+    this.onObjectLockAcquiredCallback = callback
+  }
+
+  onObjectLockReleased(callback) {
+    this.onObjectLockReleasedCallback = callback
   }
 
   onError(callback) {

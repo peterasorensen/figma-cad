@@ -65,6 +65,15 @@ export class SocketEventHandler {
         this.app.uiManager.showCanvasNotFoundError();
       }
     });
+
+    // Handle object lock events
+    socketManager.onObjectLockAcquired((data) => {
+      this.handleObjectLockAcquired(data);
+    });
+
+    socketManager.onObjectLockReleased((data) => {
+      this.handleObjectLockReleased(data);
+    });
   }
 
   /**
@@ -248,6 +257,9 @@ export class SocketEventHandler {
 
     // Remove user from online users set
     this.app.onlineUsers.delete(data.userId);
+
+    // Clean up any locks held by the disconnected user
+    this.app.cleanupLocksForUser(data.userId);
 
     // Update presence display
     this.app.uiManager.updatePresenceDisplay();
@@ -509,6 +521,26 @@ export class SocketEventHandler {
     if (this.aiChatCallback && this.aiChatCallback.trackAffectedShape) {
       this.aiChatCallback.trackAffectedShape(targetShapeId);
       this.aiChatCallback.trackAffectedShape(cuttingShapeId);
+    }
+  }
+
+  /**
+   * Handle remote object lock acquisition
+   */
+  handleObjectLockAcquired(data) {
+    console.log('🔒 Remote object lock acquired:', data);
+    if (this.app.handleRemoteLockAcquired) {
+      this.app.handleRemoteLockAcquired(data);
+    }
+  }
+
+  /**
+   * Handle remote object lock release
+   */
+  handleObjectLockReleased(data) {
+    console.log('🔓 Remote object lock released:', data);
+    if (this.app.handleRemoteLockReleased) {
+      this.app.handleRemoteLockReleased(data);
     }
   }
 }
