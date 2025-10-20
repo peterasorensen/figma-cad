@@ -99,3 +99,28 @@ export async function removeUserSession(userId, canvasId) {
     console.error('Error removing user session:', error)
   }
 }
+
+export async function getActiveUserSessions(canvasId) {
+  try {
+    // Get sessions that are less than 5 minutes old (active users)
+    const fiveMinutesAgo = new Date(Date.now() - 300000).toISOString()
+
+    const { data: sessions, error } = await supabase
+      .from('user_sessions')
+      .select('user_id, canvas_id, user_email, cursor_x, cursor_y, cursor_z, last_seen')
+      .eq('canvas_id', canvasId)
+      .gt('last_seen', fiveMinutesAgo)
+      .order('last_seen', { ascending: false })
+
+    if (error) {
+      console.error('Error fetching active user sessions:', error)
+      return []
+    }
+
+    console.log(`📊 Found ${sessions?.length || 0} active sessions for canvas ${canvasId}`)
+    return sessions || []
+  } catch (error) {
+    console.error('Error getting active user sessions:', error)
+    return []
+  }
+}

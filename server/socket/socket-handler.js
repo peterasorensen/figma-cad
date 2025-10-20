@@ -7,7 +7,8 @@ import {
   decrementConnectionCount,
   MAX_CONNECTIONS,
   updateUserSession,
-  removeUserSession
+  removeUserSession,
+  getActiveUserSessions
 } from '../canvas/canvas-operations.js'
 
 // Map to store throttled object update timeouts
@@ -58,6 +59,9 @@ export function setupSocketHandlers(io) {
           cursor: { x: 0, y: 0, z: 0 }
         })
 
+        // Save user session to database immediately so other users can see them
+        updateUserSession(userId, canvasId, { x: 0, y: 0, z: 0 })
+
         // Add to canvas room
         if (!canvasRooms.has(canvasId)) {
           canvasRooms.set(canvasId, new Set())
@@ -68,23 +72,29 @@ export function setupSocketHandlers(io) {
         // In production, you'd validate canvas exists in database
         console.log(`📊 Skipping canvas validation for testing: ${canvasId}`)
 
-        // For testing: use mock data instead of database
-        console.log(`📊 Using mock data for canvas ${canvasId}`)
+        // Get real active user sessions from database
         const objects = [] // Empty canvas for testing
-        const userEmail = `user${userId.substring(0, 8)}@test.com`
+        const sessions = await getActiveUserSessions(canvasId)
 
-        // Mock session data
-        const sessions = [{
-          user_id: userId,
-          canvas_id: canvasId,
-          user_email: userEmail,
-          cursor_x: 0,
-          cursor_y: 0,
-          cursor_z: 0,
-          last_seen: new Date().toISOString()
-        }]
+        // Ensure current user is in the sessions (in case they just joined and session hasn't been saved yet)
+        const currentUserInSessions = sessions.some(s => s.user_id === userId)
+        if (!currentUserInSessions) {
+          // Add current user's session if not found in database
+          const { data: userData } = await supabase.auth.admin.getUserById(userId)
+          const userEmail = userData?.user?.email || `user${userId.substring(0, 8)}@test.com`
 
-        console.log(`📊 Mock sessions created for canvas ${canvasId}:`, sessions.length)
+          sessions.push({
+            user_id: userId,
+            canvas_id: canvasId,
+            user_email: userEmail,
+            cursor_x: 0,
+            cursor_y: 0,
+            cursor_z: 0,
+            last_seen: new Date().toISOString()
+          })
+        }
+
+        console.log(`📊 Real sessions loaded for canvas ${canvasId}:`, sessions.length)
 
         // Send current state to user (includes all sessions)
         socket.emit('canvas-state', {
@@ -92,8 +102,9 @@ export function setupSocketHandlers(io) {
           sessions: sessions || []
         })
 
-        // Use the email we already fetched for the session (reuse the userEmail variable)
-        const displayEmail = userEmail || `User ${userId.substring(0, 8)}`
+        // Get current user's email for the join notification
+        const { data: userDataJoin } = await supabase.auth.admin.getUserById(userId)
+        const displayEmail = userDataJoin?.user?.email || `User ${userId.substring(0, 8)}`
 
         // Notify others about new user (don't send to current user since their cursor is already in canvas state)
         socket.to(`canvas:${canvasId}`).emit('user-joined', {
