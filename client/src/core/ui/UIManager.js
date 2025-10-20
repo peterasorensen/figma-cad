@@ -1,3 +1,5 @@
+import * as THREE from 'three';
+
 /**
  * Manages UI updates and notifications
  */
@@ -6,6 +8,9 @@ export class UIManager {
     this.app = app;
     this.notifications = [];
     this.lastNotification = null;
+
+    // Initialize STL functionality
+    this.initSTLHandlers();
   }
 
   /**
@@ -330,6 +335,131 @@ export class UIManager {
       });
     } else {
       this.showShareNotification('Share this link: ' + currentUrl.toString());
+    }
+  }
+
+  /**
+   * Initialize STL export/import handlers
+   */
+  initSTLHandlers() {
+    // Export STL button
+    const exportButton = document.getElementById('export-stl');
+    if (exportButton) {
+      exportButton.addEventListener('click', () => {
+        this.exportSTL();
+      });
+    }
+
+    // Import STL button
+    const importButton = document.getElementById('import-stl');
+    if (importButton) {
+      importButton.addEventListener('click', () => {
+        this.importSTL();
+      });
+    }
+  }
+
+  /**
+   * Export canvas to STL
+   */
+  async exportSTL() {
+    try {
+      if (!this.app.shapeManager) {
+        this.showNotification('No shapes to export', 'error');
+        return;
+      }
+
+      const shapes = this.app.shapeManager.getAllShapes();
+      if (shapes.length === 0) {
+        this.showNotification('Canvas is empty - nothing to export', 'info');
+        return;
+      }
+
+      // Import STL utils dynamically
+      const { exportToSTL } = await import('../../utils/STLUtils.js');
+
+      // Generate filename with canvas ID
+      const canvasId = this.app.currentCanvasId ?
+        this.app.currentCanvasId.substring(0, 8) : 'canvas';
+      const filename = `collabcanvas-${canvasId}`;
+
+      exportToSTL(shapes, filename);
+      this.showNotification(`Exported ${shapes.length} shapes to STL`, 'success');
+
+    } catch (error) {
+      console.error('STL export failed:', error);
+      this.showNotification('Failed to export STL: ' + error.message, 'error');
+    }
+  }
+
+  /**
+   * Import STL file
+   */
+  async importSTL() {
+    try {
+      // Create file input element
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = '.stl,.STL';
+      input.style.display = 'none';
+
+      input.onchange = async (event) => {
+        const file = event.target.files[0];
+        if (!file) return;
+
+        if (!file.name.toLowerCase().endsWith('.stl')) {
+          this.showNotification('Please select a valid STL file', 'error');
+          return;
+        }
+
+        try {
+          // Import STL utils dynamically
+          const { importFromSTL } = await import('../../utils/STLUtils.js');
+
+          // Import at origin with slight Y offset for visibility
+          const position = { x: 0, y: 1, z: 0 };
+
+          const shapes = await importFromSTL(file, this.app.shapeManager, position);
+
+          this.showNotification(`Imported STL with ${shapes.length} shapes`, 'success');
+
+          // Broadcast new shapes to other users
+          if (this.app.socketManager && this.app.socketManager.isConnected && this.app.currentCanvasId) {
+            shapes.forEach(shape => {
+              const objectData = {
+                id: shape.id,
+                type: 'imported',
+                position_x: shape.mesh.position.x,
+                position_y: shape.mesh.position.y,
+                position_z: shape.mesh.position.z,
+                rotation_x: shape.mesh.rotation.x,
+                rotation_y: shape.mesh.rotation.y,
+                rotation_z: shape.mesh.rotation.z,
+                scale_x: shape.mesh.scale.x,
+                scale_y: shape.mesh.scale.y,
+                scale_z: shape.mesh.scale.z,
+                color: shape.properties.color || '#cccccc',
+                geometry: shape.serializeGeometry()
+              };
+
+              this.app.socketManager.updateObject(shape.id, objectData);
+            });
+          }
+
+        } catch (error) {
+          console.error('STL import failed:', error);
+          this.showNotification('Failed to import STL: ' + error.message, 'error');
+        }
+      };
+
+      // Trigger file selection
+      document.body.appendChild(input);
+      input.click();
+      document.body.removeChild(input);
+
+    } catch (error) {
+      console.error('STL import setup failed:', error);
+      this.showNotification('Failed to setup STL import', 'error');
     }
   }
 }

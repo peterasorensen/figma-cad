@@ -567,6 +567,68 @@
       font-size: 12px;
     }
 
+    /* STL dropdown */
+    #header-controls {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .stl-dropdown {
+      position: relative;
+    }
+
+    .stl-button {
+      background: #3a3a3a;
+      border: none;
+      padding: 8px 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      color: #ffffff;
+      font-size: 14px;
+      transition: background 0.2s;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .stl-button:hover {
+      background: #4a4a4a;
+    }
+
+    .stl-menu {
+      position: absolute;
+      top: 100%;
+      left: 0;
+      background: rgba(42, 42, 42, 0.95);
+      border: 1px solid #3a3a3a;
+      border-radius: 8px;
+      padding: 8px;
+      display: none;
+      z-index: 1001;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+      margin-top: 2px; /* Reduced gap */
+      flex-direction: column;
+      gap: 4px;
+      min-width: 120px;
+      /* Add a small invisible hover area above the menu */
+      transform: translateY(-2px);
+    }
+
+    .stl-dropdown:hover .stl-menu,
+    .stl-menu:hover {
+      display: flex;
+    }
+
+    .stl-menu .tool-button {
+      width: 100%;
+      text-align: left;
+      padding: 8px 12px;
+      font-size: 13px;
+      border-radius: 4px;
+      margin: 0;
+    }
+
     /* Text Edit Modal */
     .modal-overlay {
       position: fixed;
@@ -806,6 +868,15 @@
 
     <div id="header">
       <h1>CollabCanvas</h1>
+      <div id="header-controls">
+        <div class="stl-dropdown">
+          <button class="tool-button tooltip stl-button" data-tooltip="STL Export/Import">STL ▶</button>
+          <div class="stl-menu">
+            <button class="tool-button tooltip" id="export-stl" data-tooltip="Export canvas to STL file">Export STL</button>
+            <button class="tool-button tooltip" id="import-stl" data-tooltip="Import STL file">Import STL</button>
+          </div>
+        </div>
+      </div>
       <div id="user-info">
         <span id="username">Guest</span>
         <button id="auth-button" class="auth-button">Sign In</button>
