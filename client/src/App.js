@@ -449,7 +449,6 @@ export class App {
           };
 
           socketManager.updateObject(shape.id, objectData);
-          console.log('📤 Broadcasted object update:', shape.id);
         }
       }
     }

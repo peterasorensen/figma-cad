@@ -300,14 +300,11 @@ export class SocketEventHandler {
    * Handle remote object update
    */
   handleObjectUpdated(data) {
-    console.log('🔵 Remote object updated:', data);
-
     // Update visual object in 3D scene
     if (this.app.shapeManager) {
       const existingShape = this.app.shapeManager.getShape(data.id);
       if (existingShape) {
         this.app.shapeManager.updateShapeFromData(existingShape, data);
-        console.log('🔵 Updated visual object:', data.id);
       }
     }
 

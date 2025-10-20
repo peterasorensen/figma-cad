@@ -420,10 +420,6 @@ export class ShapeManager {
     if (!existingShape || !existingShape.mesh) return;
 
     try {
-      // For object creation/updates, check if we need smooth interpolation
-      // Only use interpolation if the object already exists and we're updating it
-      // For newly created objects, set position directly
-
       // Check if this is a significant position change that warrants interpolation
       const currentPos = existingShape.mesh.position;
       const hasPositionChange = data.position_x !== undefined && data.position_y !== undefined && data.position_z !== undefined;
@@ -433,50 +429,40 @@ export class ShapeManager {
          Math.abs(currentPos.z - data.position_z) > 0.01);
 
       if (positionChanged) {
-        // Set position directly for significant changes (faster than interpolation)
+        // Use smooth interpolation for significant position changes to prevent jumpy movement
+        const targetData = {
+          position_x: data.position_x,
+          position_y: data.position_y,
+          position_z: data.position_z
+        };
+
+        this.startInterpolation(existingShape, targetData);
+      } else {
+        // For non-significant changes or no position changes, set position directly
         if (data.position_x !== undefined) existingShape.mesh.position.x = data.position_x;
         if (data.position_y !== undefined) existingShape.mesh.position.y = data.position_y;
         if (data.position_z !== undefined) existingShape.mesh.position.z = data.position_z;
+      }
 
-        // Update other properties
-        if (data.rotation_x !== undefined) existingShape.mesh.rotation.x = data.rotation_x;
-        if (data.rotation_y !== undefined) existingShape.mesh.rotation.y = data.rotation_y;
-        if (data.rotation_z !== undefined) existingShape.mesh.rotation.z = data.rotation_z;
+      // Always update other properties immediately (rotation, scale, color don't need interpolation)
+      if (data.rotation_x !== undefined) existingShape.mesh.rotation.x = data.rotation_x;
+      if (data.rotation_y !== undefined) existingShape.mesh.rotation.y = data.rotation_y;
+      if (data.rotation_z !== undefined) existingShape.mesh.rotation.z = data.rotation_z;
 
-        // Update scale for resize mode (visual feedback during drag)
-        if (data.scale_x !== undefined) existingShape.mesh.scale.x = data.scale_x;
-        if (data.scale_y !== undefined) existingShape.mesh.scale.y = data.scale_y;
-        if (data.scale_z !== undefined) existingShape.mesh.scale.z = data.scale_z;
+      // Update scale for resize mode (visual feedback during drag)
+      if (data.scale_x !== undefined) existingShape.mesh.scale.x = data.scale_x;
+      if (data.scale_y !== undefined) existingShape.mesh.scale.y = data.scale_y;
+      if (data.scale_z !== undefined) existingShape.mesh.scale.z = data.scale_z;
 
-        if (data.color && existingShape.mesh.material) {
-          existingShape.mesh.material.color.setStyle(data.color);
-        }
-
-        console.log('Set position directly for', data.id);
-      } else {
-        // Set properties directly for cases without position changes
-        if (data.rotation_x !== undefined) existingShape.mesh.rotation.x = data.rotation_x;
-        if (data.rotation_y !== undefined) existingShape.mesh.rotation.y = data.rotation_y;
-        if (data.rotation_z !== undefined) existingShape.mesh.rotation.z = data.rotation_z;
-
-        // Update scale for resize mode (visual feedback during drag)
-        if (data.scale_x !== undefined) existingShape.mesh.scale.x = data.scale_x;
-        if (data.scale_y !== undefined) existingShape.mesh.scale.y = data.scale_y;
-        if (data.scale_z !== undefined) existingShape.mesh.scale.z = data.scale_z;
-
-        if (data.color && existingShape.mesh.material) {
-          existingShape.mesh.material.color.setStyle(data.color);
-        }
+      if (data.color && existingShape.mesh.material) {
+        existingShape.mesh.material.color.setStyle(data.color);
       }
 
       // If geometry data is present (e.g., after resize operation), apply it
       // This preserves baked scale and non-uniform transformations
       if (data.geometry) {
         existingShape.applySerializedGeometry(data.geometry);
-        console.log(`Updated shape geometry from remote data: ${data.id}`);
       }
-
-      console.log(`Updated shape from remote data: ${data.id}`);
     } catch (error) {
       console.error('Error updating shape from remote data:', error);
     }
@@ -484,6 +470,8 @@ export class ShapeManager {
 
   /**
    * Start smooth interpolation for shape properties
+   * @param {Shape} shape - The shape to interpolate
+   * @param {object} targetData - Target values for interpolation
    */
   startInterpolation(shape, targetData) {
     const shapeId = shape.id;
@@ -500,15 +488,15 @@ export class ShapeManager {
       color: shape.mesh.material ? shape.mesh.material.color.getHex() : null
     };
 
-    const duration = 100; // 100ms interpolation duration
+    const duration = 50; // 50ms for smooth, responsive interpolation
     const startTime = Date.now();
 
     const animate = () => {
       const elapsed = Date.now() - startTime;
       const progress = Math.min(elapsed / duration, 1);
 
-      // Use ease-out interpolation for smoother movement
-      const easeProgress = 1 - Math.pow(1 - progress, 3);
+      // Linear interpolation for smooth, responsive movement
+      const easeProgress = progress;
 
       // Interpolate position
       if (targetData.position_x !== undefined) {
@@ -540,7 +528,7 @@ export class ShapeManager {
         shape.mesh.scale.y = startData.scale.y + (targetData.scale_y - startData.scale.y) * easeProgress;
       }
       if (targetData.scale_z !== undefined) {
-        shape.mesh.scale.z = startData.scale.z + (targetData.scale_z - startData.scale.z) * easeProgress;
+        shape.mesh.scale.z = startData.scale.z + (targetData.scale.z - startData.scale.z) * easeProgress;
       }
 
       // Update color
