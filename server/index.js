@@ -1620,21 +1620,21 @@ async function handleCreateForm(args, canvasId, userId) {
   if (type === 'login') {
     formElements = [
       { type: 'text', text: 'Username:', x: x, y: y },
-      { type: 'rectangle', x: x + 80, y: y - 5, width: 150, height: 30, color: '#ffffff' },
+      { type: 'rectangle', x: x + 8, y: y - 5, width: 15, height: 3, color: '#ffffff' },
       { type: 'text', text: 'Password:', x: x, y: y + 40 },
-      { type: 'rectangle', x: x + 80, y: y + 35, width: 150, height: 30, color: '#ffffff' },
-      { type: 'rectangle', x: x + 60, y: y + 80, width: 80, height: 35, color: '#4f46e5' },
+      { type: 'rectangle', x: x + 8, y: y + 3.5, width: 15, height: 3, color: '#ffffff' },
+      { type: 'rectangle', x: x + 6, y: y + 8, width: 8, height: 3.5, color: '#4f46e5' },
       { type: 'text', text: 'Login', x: x + 85, y: y + 88, color: '#ffffff' }
     ]
   } else if (type === 'contact') {
     formElements = [
       { type: 'text', text: 'Name:', x: x, y: y },
-      { type: 'rectangle', x: x + 60, y: y - 5, width: 200, height: 30, color: '#ffffff' },
+      { type: 'rectangle', x: x + 6, y: y - 5, width: 20, height: 3, color: '#ffffff' },
       { type: 'text', text: 'Email:', x: x, y: y + 40 },
-      { type: 'rectangle', x: x + 60, y: y + 35, width: 200, height: 30, color: '#ffffff' },
+      { type: 'rectangle', x: x + 6, y: y + 3.5, width: 20, height: 3, color: '#ffffff' },
       { type: 'text', text: 'Message:', x: x, y: y + 80 },
-      { type: 'rectangle', x: x + 80, y: y + 75, width: 200, height: 60, color: '#ffffff' },
-      { type: 'rectangle', x: x + 100, y: y + 150, width: 80, height: 35, color: '#4f46e5' },
+      { type: 'rectangle', x: x + 8, y: y + 7.5, width: 20, height: 6, color: '#ffffff' },
+      { type: 'rectangle', x: x + 10, y: y + 15, width: 8, height: 3.5, color: '#4f46e5' },
       { type: 'text', text: 'Send', x: x + 125, y: y + 158, color: '#ffffff' }
     ]
   }
