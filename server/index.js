@@ -7,7 +7,7 @@ import { setupAIChatEndpoint } from './ai/functions.js'
 const { app, server, io } = createApp()
 
 // Set up all the routes and handlers
-setupApiRoutes(app)
+setupApiRoutes(app, io)
 setupAIChatEndpoint(app, io)
 setupSocketHandlers(io)
 

@@ -8,6 +8,8 @@ import { Transform } from './core/interaction/Transform.js';
 import { ShapeManager } from './shapes/ShapeManager.js';
 import { AuthModal } from './components/AuthModal.js';
 import { AIChat } from './components/AIChat.js';
+import { BlueprintModal } from './components/BlueprintModal.js';
+import './components/BlueprintModal.css';
 import { auth, supabase } from './core/auth/Auth.js';
 import { socketManager } from './core/network/SocketManager.js';
 import { CursorManager } from './core/render/CursorManager.js';
@@ -34,6 +36,7 @@ export class App {
     this.transform = null;
     this.shapeManager = null;
     this.authModal = null;
+    this.blueprintModal = null;
     this.booleanManager = null;
     this.cursorManager = null;
     this.uiManager = null;
@@ -124,6 +127,9 @@ export class App {
 
     // Initialize AI Chat (after socketEventHandler so it can register)
     this.aiChat = new AIChat(this);
+
+    // Initialize Blueprint Modal for room detection
+    this.blueprintModal = new BlueprintModal(this);
 
     // Set up transform controls callbacks
     this.transform.setChangeCallback((object) => {
@@ -885,8 +891,195 @@ export class App {
     this.uiManager.showNotification(`Cleared ${allShapeIds.length} shape(s) from canvas`, 'success');
   }
 
+  /**
+   * Open blueprint modal for room detection
+   */
+  openBlueprintModal() {
+    if (this.blueprintModal) {
+      this.blueprintModal.open();
+    }
+  }
 
+  /**
+   * Display blueprint image as a reference plane in the scene
+   * @param {string} blueprintUrl - URL of the blueprint image
+   */
+  displayBlueprintPlane(blueprintUrl) {
+    // Remove existing blueprint plane if any
+    if (this.blueprintPlane) {
+      this.scene.getScene().remove(this.blueprintPlane);
+      if (this.blueprintPlane.geometry) this.blueprintPlane.geometry.dispose();
+      if (this.blueprintPlane.material) {
+        if (this.blueprintPlane.material.map) this.blueprintPlane.material.map.dispose();
+        this.blueprintPlane.material.dispose();
+      }
+      this.blueprintPlane = null;
+    }
 
+    // Load the blueprint image
+    const textureLoader = new THREE.TextureLoader();
+    textureLoader.load(
+      blueprintUrl,
+      (texture) => {
+        // Create a plane with the blueprint texture
+        // Size matches our world scale: 0-1000 normalized → 20 world units
+        const planeGeometry = new THREE.PlaneGeometry(20, 20);
+        const planeMaterial = new THREE.MeshBasicMaterial({
+          map: texture,
+          transparent: true,
+          opacity: 0.5,
+          side: THREE.DoubleSide
+        });
+
+        this.blueprintPlane = new THREE.Mesh(planeGeometry, planeMaterial);
+
+        // Position at ground level, centered at origin
+        this.blueprintPlane.position.set(0, 0.01, 0);
+        this.blueprintPlane.rotation.x = -Math.PI / 2; // Rotate to lie flat
+
+        // Disable raycasting so it doesn't interfere with object selection
+        this.blueprintPlane.raycast = () => {};
+
+        // Add to scene
+        this.scene.getScene().add(this.blueprintPlane);
+
+        console.log('Blueprint reference plane displayed');
+      },
+      undefined,
+      (error) => {
+        console.error('Failed to load blueprint image:', error);
+      }
+    );
+  }
+
+  /**
+   * Remove blueprint reference plane from scene
+   */
+  removeBlueprintPlane() {
+    if (this.blueprintPlane) {
+      this.scene.getScene().remove(this.blueprintPlane);
+      if (this.blueprintPlane.geometry) this.blueprintPlane.geometry.dispose();
+      if (this.blueprintPlane.material) {
+        if (this.blueprintPlane.material.map) this.blueprintPlane.material.map.dispose();
+        this.blueprintPlane.material.dispose();
+      }
+      this.blueprintPlane = null;
+      console.log('Blueprint reference plane removed');
+    }
+  }
+
+  /**
+   * Import detected rooms to canvas from blueprint detection
+   * @param {string} blueprintId - Blueprint ID
+   * @param {Array} detectedRooms - Array of detected rooms
+   */
+  async importDetectedRooms(blueprintId, detectedRooms) {
+    console.log('Importing detected rooms:', detectedRooms);
+
+    try {
+      const importedRooms = [];
+
+      // Define the world space dimensions for the blueprint
+      // Map the 0-1000 normalized coordinates to a reasonable world size
+      const WORLD_SCALE = 0.02; // Scale factor: 1000 units → 20 world units
+      const WORLD_OFFSET_X = -10; // Center the blueprint at origin
+      const WORLD_OFFSET_Z = -10;
+
+      // Create room shapes from detected rooms
+      for (let i = 0; i < detectedRooms.length; i++) {
+        const detectedRoom = detectedRooms[i];
+        const { bounding_box, name_hint, confidence, id } = detectedRoom;
+
+        // Get normalized coordinates (0-1000 scale)
+        const [x_min, y_min, x_max, y_max] = bounding_box;
+
+        // Convert to world space coordinates
+        const worldXMin = (x_min * WORLD_SCALE) + WORLD_OFFSET_X;
+        const worldZMin = (y_min * WORLD_SCALE) + WORLD_OFFSET_Z;
+        const worldXMax = (x_max * WORLD_SCALE) + WORLD_OFFSET_X;
+        const worldZMax = (y_max * WORLD_SCALE) + WORLD_OFFSET_Z;
+
+        // Calculate dimensions in world space
+        const width = worldXMax - worldXMin;
+        const height = worldZMax - worldZMin;
+        const centerX = (worldXMin + worldXMax) / 2;
+        const centerZ = (worldZMin + worldZMax) / 2;
+
+        // Use name_hint from AI, or fallback to "Room #N"
+        const roomName = name_hint || `Room #${i + 1}`;
+
+        console.log(`Creating room "${roomName}":`, {
+          normalized: { x_min, y_min, x_max, y_max },
+          world: { centerX, centerZ, width, height }
+        });
+
+        // Create room using ShapeFactory
+        const room = this.shapeManager.createShape(
+          'room',
+          { x: centerX, y: 0, z: centerZ },
+          {
+            width,
+            height,
+            blueprintId,
+            boundingBox: bounding_box,
+            nameHint: roomName,
+            confidence: confidence || 0.8,
+            verified: false
+          },
+          id
+        );
+
+        // Check if room was created successfully
+        if (!room) {
+          console.error('Failed to create room:', detectedRoom);
+          continue; // Skip this room
+        }
+
+        importedRooms.push(room);
+
+        // Broadcast room creation to other users
+        if (this.socketManager && this.socketManager.isConnected && this.currentCanvasId) {
+          this.socketManager.createObject({
+            id: room.id,
+            type: 'room',
+            position: { x: centerX, y: 0, z: centerZ },
+            properties: {
+              width,
+              height,
+              blueprintId,
+              boundingBox: bounding_box,
+              nameHint: roomName,
+              confidence: confidence || 0.8,
+              verified: false,
+              color: room.properties?.color || '#4f46e5'
+            }
+          });
+        }
+      }
+
+      // Record in history for undo/redo
+      if (this.historyManager && importedRooms.length > 0) {
+        this.historyManager.pushCreate(importedRooms.map(r => r.id), this.shapeManager);
+        this.uiManager.updateUndoRedoButtonStates();
+      }
+
+      // Show success notification
+      this.uiManager.showNotification(
+        `Successfully imported ${importedRooms.length} room(s) from blueprint`,
+        'success'
+      );
+
+      console.log(`Imported ${importedRooms.length} rooms to canvas`);
+
+    } catch (error) {
+      console.error('Error importing detected rooms:', error);
+      this.uiManager.showNotification(
+        `Failed to import rooms: ${error.message}`,
+        'error'
+      );
+      throw error;
+    }
+  }
 
 
 

@@ -134,3 +134,92 @@ CREATE TRIGGER update_canvases_updated_at BEFORE UPDATE ON canvases
 CREATE TRIGGER update_objects_updated_at BEFORE UPDATE ON objects
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
+-- Blueprints table - represents uploaded architectural blueprints for room detection
+CREATE TABLE IF NOT EXISTS blueprints (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  canvas_id UUID REFERENCES canvases(id) ON DELETE CASCADE,
+  file_url TEXT NOT NULL,
+  file_type TEXT NOT NULL, -- 'png', 'jpg', 'jpeg', 'pdf'
+  width INT,
+  height INT,
+  uploaded_by UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Detected Rooms table - represents rooms detected by AI from blueprints
+CREATE TABLE IF NOT EXISTS detected_rooms (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  blueprint_id UUID REFERENCES blueprints(id) ON DELETE CASCADE,
+  bounding_box JSONB NOT NULL, -- [x_min, y_min, x_max, y_max] in 0-1000 normalized coordinates
+  polygon JSONB, -- Optional: for non-rectangular rooms [[x1,y1], [x2,y2], ...]
+  name_hint TEXT,
+  confidence REAL DEFAULT 0, -- AI confidence score (0-1)
+  verified BOOLEAN DEFAULT FALSE, -- User has verified/edited this room
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Create indexes for blueprints and detected_rooms
+CREATE INDEX IF NOT EXISTS idx_blueprints_canvas_id ON blueprints(canvas_id);
+CREATE INDEX IF NOT EXISTS idx_blueprints_uploaded_by ON blueprints(uploaded_by);
+CREATE INDEX IF NOT EXISTS idx_detected_rooms_blueprint_id ON detected_rooms(blueprint_id);
+
+-- Enable Row Level Security for new tables
+ALTER TABLE blueprints ENABLE ROW LEVEL SECURITY;
+ALTER TABLE detected_rooms ENABLE ROW LEVEL SECURITY;
+
+-- Blueprints policies
+CREATE POLICY "Users can view blueprints in their canvases" ON blueprints
+  FOR SELECT USING (
+    EXISTS (
+      SELECT 1 FROM canvases
+      WHERE canvases.id = blueprints.canvas_id
+      AND canvases.created_by = auth.uid()
+    )
+  );
+
+CREATE POLICY "Users can create blueprints in their canvases" ON blueprints
+  FOR INSERT WITH CHECK (
+    auth.uid() = uploaded_by AND
+    EXISTS (
+      SELECT 1 FROM canvases
+      WHERE canvases.id = blueprints.canvas_id
+      AND canvases.created_by = auth.uid()
+    )
+  );
+
+CREATE POLICY "Users can update blueprints they uploaded" ON blueprints
+  FOR UPDATE USING (auth.uid() = uploaded_by);
+
+CREATE POLICY "Users can delete blueprints they uploaded" ON blueprints
+  FOR DELETE USING (auth.uid() = uploaded_by);
+
+-- Detected rooms policies
+CREATE POLICY "Users can view rooms from blueprints in their canvases" ON detected_rooms
+  FOR SELECT USING (
+    EXISTS (
+      SELECT 1 FROM blueprints
+      JOIN canvases ON canvases.id = blueprints.canvas_id
+      WHERE blueprints.id = detected_rooms.blueprint_id
+      AND canvases.created_by = auth.uid()
+    )
+  );
+
+CREATE POLICY "Users can manage rooms from their blueprints" ON detected_rooms
+  FOR ALL USING (
+    EXISTS (
+      SELECT 1 FROM blueprints
+      JOIN canvases ON canvases.id = blueprints.canvas_id
+      WHERE blueprints.id = detected_rooms.blueprint_id
+      AND canvases.created_by = auth.uid()
+    )
+  );
+
+-- Triggers to automatically update updated_at for new tables
+CREATE TRIGGER update_blueprints_updated_at BEFORE UPDATE ON blueprints
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_detected_rooms_updated_at BEFORE UPDATE ON detected_rooms
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+

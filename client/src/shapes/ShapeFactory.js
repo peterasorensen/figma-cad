@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { Shape } from './Shape.js';
 import { TextShape } from './Text.js';
+import { Room } from './Room.js';
 
 /**
  * Factory for creating different types of shapes
@@ -372,6 +373,51 @@ export class ShapeFactory {
       tubularSegments: tubularSegments || 20,
       radialSegments: radialSegments || 8,
       color: '#' + material.color.getHexString()
+    }, id);
+  }
+
+  /**
+   * Create a Room (detected from blueprint)
+   * Similar to rectangle but with special Room class and properties
+   */
+  createRoom(x = 0, z = 0, id = null, properties = {}) {
+    const {
+      width,
+      height,
+      color,
+      blueprintId,
+      boundingBox,
+      nameHint,
+      confidence,
+      verified
+    } = properties;
+
+    // Create thin box geometry (like rectangle but for rooms)
+    const geometry = new THREE.BoxGeometry(width, 0.1, height);
+    const material = new THREE.MeshStandardMaterial({
+      color: color || 0x4f46e5,
+      transparent: true,
+      opacity: verified ? 0.6 : 0.4,
+      roughness: 0.5,
+      metalness: 0.3,
+      side: THREE.DoubleSide
+    });
+
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.position.set(x, 0.05, z);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+
+    // Create Room instance with special properties
+    return new Room(mesh, {
+      width,
+      height,
+      color: color ? ('#' + new THREE.Color(color).getHexString()) : '#4f46e5',
+      blueprintId,
+      boundingBox,
+      nameHint: nameHint || 'Unknown Room',
+      confidence: confidence || 0.8,
+      verified: verified || false
     }, id);
   }
 

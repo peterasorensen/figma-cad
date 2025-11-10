@@ -138,6 +138,14 @@ export class EventHandler {
       });
     }
 
+    // Import blueprint button
+    const blueprintButton = document.getElementById('import-blueprint');
+    if (blueprintButton) {
+      blueprintButton.addEventListener('click', () => {
+        this.app.openBlueprintModal();
+      });
+    }
+
     // Apply boolean button
     const applyBooleanButton = document.getElementById('apply-boolean');
     if (applyBooleanButton) {

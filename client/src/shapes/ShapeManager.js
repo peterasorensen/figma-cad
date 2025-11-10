@@ -92,6 +92,9 @@ export class ShapeManager {
         case 'tube':
           shape = this.factory.createTube(x, y, z, id, props);
           break;
+        case 'room':
+          shape = this.factory.createRoom(x, z, id, props);
+          break;
         default:
           console.warn(`Unknown shape type: ${type}`);
           return null;
