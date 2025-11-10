@@ -147,8 +147,15 @@ export class Room extends Shape {
     // Create sprite
     this.roomLabel = new THREE.Sprite(spriteMaterial);
 
-    // Scale sprite to appropriate size
-    const scale = Math.max(this.getDimensions().width, this.getDimensions().height) * 0.3;
+    // Scale sprite to appropriate size based on actual mesh geometry (world space)
+    // Get the actual dimensions from the mesh geometry, not the normalized bounding box
+    if (!this.mesh.geometry.boundingBox) {
+      this.mesh.geometry.computeBoundingBox();
+    }
+    const bbox = this.mesh.geometry.boundingBox;
+    const meshWidth = bbox.max.x - bbox.min.x;
+    const meshHeight = bbox.max.z - bbox.min.z;
+    const scale = Math.max(meshWidth, meshHeight) * 0.3;
     this.roomLabel.scale.set(scale * 4, scale, 1);
 
     // Position above the room

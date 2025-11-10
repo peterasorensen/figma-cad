@@ -987,52 +987,60 @@ export class App {
 
       // Create room shapes from detected rooms
       for (let i = 0; i < detectedRooms.length; i++) {
-        const detectedRoom = detectedRooms[i];
-        const { bounding_box, name_hint, confidence, id } = detectedRoom;
+        try {
+          const detectedRoom = detectedRooms[i];
+          const { bounding_box, name_hint, confidence, id } = detectedRoom;
 
-        // Get normalized coordinates (0-1000 scale)
-        const [x_min, y_min, x_max, y_max] = bounding_box;
+          // Get normalized coordinates (0-1000 scale)
+          const [x_min, y_min, x_max, y_max] = bounding_box;
 
-        // Convert to world space coordinates
-        const worldXMin = (x_min * WORLD_SCALE) + WORLD_OFFSET_X;
-        const worldZMin = (y_min * WORLD_SCALE) + WORLD_OFFSET_Z;
-        const worldXMax = (x_max * WORLD_SCALE) + WORLD_OFFSET_X;
-        const worldZMax = (y_max * WORLD_SCALE) + WORLD_OFFSET_Z;
+          // Convert to world space coordinates
+          const worldXMin = (x_min * WORLD_SCALE) + WORLD_OFFSET_X;
+          const worldZMin = (y_min * WORLD_SCALE) + WORLD_OFFSET_Z;
+          const worldXMax = (x_max * WORLD_SCALE) + WORLD_OFFSET_X;
+          const worldZMax = (y_max * WORLD_SCALE) + WORLD_OFFSET_Z;
 
-        // Calculate dimensions in world space
-        const width = worldXMax - worldXMin;
-        const height = worldZMax - worldZMin;
-        const centerX = (worldXMin + worldXMax) / 2;
-        const centerZ = (worldZMin + worldZMax) / 2;
+          // Calculate dimensions in world space
+          const width = worldXMax - worldXMin;
+          const height = worldZMax - worldZMin;
+          const centerX = (worldXMin + worldXMax) / 2;
+          const centerZ = (worldZMin + worldZMax) / 2;
 
-        // Use name_hint from AI, or fallback to "Room #N"
-        const roomName = name_hint || `Room #${i + 1}`;
+          // Use name_hint from AI, or fallback to "Room #N"
+          const roomName = name_hint || `Room #${i + 1}`;
 
-        console.log(`Creating room "${roomName}":`, {
-          normalized: { x_min, y_min, x_max, y_max },
-          world: { centerX, centerZ, width, height }
-        });
+          console.log(`Creating room "${roomName}":`, {
+            normalized: { x_min, y_min, x_max, y_max },
+            world: { centerX, centerZ, width, height }
+          });
 
-        // Create room using ShapeFactory
-        const room = this.shapeManager.createShape(
-          'room',
-          { x: centerX, y: 0, z: centerZ },
-          {
-            width,
-            height,
-            blueprintId,
-            boundingBox: bounding_box,
-            nameHint: roomName,
-            confidence: confidence || 0.8,
-            verified: false
-          },
-          id
-        );
+          // Create room using ShapeFactory
+          const room = this.shapeManager.createShape(
+            'room',
+            { x: centerX, y: 0, z: centerZ },
+            {
+              width,
+              height,
+              blueprintId,
+              boundingBox: bounding_box,
+              nameHint: roomName,
+              confidence: confidence || 0.8,
+              verified: false
+            },
+            id
+          );
 
         // Check if room was created successfully
         if (!room) {
           console.error('Failed to create room:', detectedRoom);
           continue; // Skip this room
+        }
+
+        // Validate that room has required methods
+        if (typeof room.getPosition !== 'function') {
+          console.error('Room missing getPosition method:', room);
+          console.error('Room prototype chain:', Object.getPrototypeOf(room));
+          continue; // Skip this invalid room
         }
 
         importedRooms.push(room);
@@ -1054,6 +1062,11 @@ export class App {
               color: room.properties?.color || '#4f46e5'
             }
           });
+        }
+        } catch (roomError) {
+          console.error(`Error creating room ${i + 1}:`, roomError);
+          console.error('Room data:', detectedRooms[i]);
+          // Continue with next room
         }
       }
 

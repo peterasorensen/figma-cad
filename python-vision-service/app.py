@@ -37,7 +37,7 @@ def preprocess_blueprint(image):
     Preprocess blueprint image for better room detection
     - Convert to grayscale
     - Apply adaptive thresholding
-    - Denoise
+    - Close door gaps to create enclosed rooms
     """
     # Convert to grayscale
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
@@ -55,6 +55,34 @@ def preprocess_blueprint(image):
         2
     )
 
+    # AGGRESSIVE morphological closing to connect door gaps
+    # This is critical for blueprints with open doors
+
+    # First, close small gaps with a small kernel
+    kernel_small = np.ones((3, 3), np.uint8)
+    binary = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel_small, iterations=3)
+
+    # Then use directional kernels to close doors (VERY aggressive)
+    # Increased kernel sizes and iterations to handle larger door gaps
+    kernel_vertical = cv2.getStructuringElement(cv2.MORPH_RECT, (1, 15))  # Much taller for door gaps
+    binary = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel_vertical, iterations=3)
+
+    kernel_horizontal = cv2.getStructuringElement(cv2.MORPH_RECT, (15, 1))  # Much wider for door gaps
+    binary = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel_horizontal, iterations=3)
+
+    # Medium pass to connect diagonal connections
+    kernel_medium = np.ones((7, 7), np.uint8)
+    binary = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel_medium, iterations=2)
+
+    # Larger pass to handle very broken walls
+    kernel_large = np.ones((9, 9), np.uint8)
+    binary = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel_large, iterations=2)
+
+    # Remove small noise that might have been created
+    kernel_open = np.ones((3, 3), np.uint8)
+    binary = cv2.morphologyEx(binary, cv2.MORPH_OPEN, kernel_open, iterations=1)
+
+    logger.info("Preprocessing complete - aggressive door gap closing applied")
     return gray, binary
 
 
@@ -97,12 +125,95 @@ def detect_walls(binary_image):
     return horizontal_lines, vertical_lines
 
 
-def find_rooms_from_contours(binary_image, min_area=1000, max_area=None):
+def extend_lines_for_open_plans(binary_image, horizontal_lines, vertical_lines, max_gap=50, max_extension=80):
+    """
+    Intelligently extend wall lines to help subdivide open floor plans
+    Only extends lines that are nearly aligned and close to each other
+
+    Args:
+        binary_image: Binary image to draw extended lines on
+        horizontal_lines: List of horizontal lines (x1, y1, x2, y2)
+        vertical_lines: List of vertical lines (x1, y1, x2, y2)
+        max_gap: Maximum gap between lines to consider extending (pixels)
+        max_extension: Maximum distance to extend a line (pixels)
+
+    Returns:
+        Enhanced binary image with extended lines
+    """
+    enhanced = binary_image.copy()
+    h, w = binary_image.shape
+    extensions_made = 0
+
+    # Process horizontal lines - extend lines that are nearly aligned horizontally
+    for i, line1 in enumerate(horizontal_lines):
+        x1_1, y1_1, x2_1, y2_1 = line1
+        # Ensure left-to-right ordering
+        if x1_1 > x2_1:
+            x1_1, x2_1 = x2_1, x1_1
+            y1_1, y2_1 = y2_1, y1_1
+
+        avg_y1 = (y1_1 + y2_1) // 2
+
+        # Look for nearby horizontal lines that could be connected
+        for j, line2 in enumerate(horizontal_lines[i+1:], start=i+1):
+            x1_2, y1_2, x2_2, y2_2 = line2
+            if x1_2 > x2_2:
+                x1_2, x2_2 = x2_2, x1_2
+                y1_2, y2_2 = y2_2, y1_2
+
+            avg_y2 = (y1_2 + y2_2) // 2
+
+            # Check if lines are roughly aligned (same horizontal position, within 15px)
+            if abs(avg_y1 - avg_y2) < 15:
+                # Check gap between line endings
+                if x1_2 > x2_1:  # line2 is to the right of line1
+                    gap = x1_2 - x2_1
+                    if 0 < gap < max_gap:
+                        # Extend to connect them, but limit extension
+                        extension_length = min(gap, max_extension)
+                        cv2.line(enhanced, (x2_1, avg_y1), (x2_1 + extension_length, avg_y2), 255, 2)
+                        extensions_made += 1
+
+    # Process vertical lines - extend lines that are nearly aligned vertically
+    for i, line1 in enumerate(vertical_lines):
+        x1_1, y1_1, x2_1, y2_1 = line1
+        # Ensure top-to-bottom ordering
+        if y1_1 > y2_1:
+            x1_1, x2_1 = x2_1, x1_1
+            y1_1, y2_1 = y2_1, y1_1
+
+        avg_x1 = (x1_1 + x2_1) // 2
+
+        # Look for nearby vertical lines that could be connected
+        for j, line2 in enumerate(vertical_lines[i+1:], start=i+1):
+            x1_2, y1_2, x2_2, y2_2 = line2
+            if y1_2 > y2_2:
+                x1_2, x2_2 = x2_2, x1_2
+                y1_2, y2_2 = y2_2, y1_2
+
+            avg_x2 = (x1_2 + x2_2) // 2
+
+            # Check if lines are roughly aligned (same vertical position, within 15px)
+            if abs(avg_x1 - avg_x2) < 15:
+                # Check gap between line endings
+                if y1_2 > y2_1:  # line2 is below line1
+                    gap = y1_2 - y2_1
+                    if 0 < gap < max_gap:
+                        # Extend to connect them, but limit extension
+                        extension_length = min(gap, max_extension)
+                        cv2.line(enhanced, (avg_x1, y2_1), (avg_x2, y2_1 + extension_length), 255, 2)
+                        extensions_made += 1
+
+    logger.info(f"Extended {extensions_made} wall lines to help subdivide open floor plans")
+    return enhanced
+
+
+def find_rooms_from_contours(binary_image, min_area=300, max_area=None):
     """
     Find rooms by detecting contours (enclosed spaces)
-    Returns bounding boxes for each detected room
+    Uses hierarchy to filter out parent contours
     """
-    # Find contours
+    # Find contours with hierarchy
     contours, hierarchy = cv2.findContours(
         binary_image,
         cv2.RETR_TREE,
@@ -110,34 +221,91 @@ def find_rooms_from_contours(binary_image, min_area=1000, max_area=None):
     )
 
     if max_area is None:
-        # Set max area to 1/4 of the image area by default
-        max_area = (binary_image.shape[0] * binary_image.shape[1]) // 4
+        # Set max area to 1/2 of the image area
+        max_area = (binary_image.shape[0] * binary_image.shape[1]) // 2
+
+    # hierarchy[0][i] = [Next, Previous, First_Child, Parent]
+    # We want to filter out contours that have children (parent contours)
+    # These are often false detections that encompass multiple rooms
 
     rooms = []
+    hallways = []
     image_height, image_width = binary_image.shape
+
+    logger.info(f"Total contours found: {len(contours)}")
 
     for i, contour in enumerate(contours):
         # Calculate area
         area = cv2.contourArea(contour)
 
-        # Filter by area (ignore too small or too large contours)
+        # Area filter
         if area < min_area or area > max_area:
             continue
 
         # Get bounding rectangle
         x, y, w, h = cv2.boundingRect(contour)
 
-        # Filter out extremely thin rectangles (likely walls, not rooms)
+        # Calculate aspect ratio
         aspect_ratio = max(w, h) / min(w, h) if min(w, h) > 0 else 0
-        if aspect_ratio > 10:
+
+        # Check if this contour has children (is a parent)
+        # hierarchy[0][i][2] is the first child index (-1 means no children)
+        has_children = hierarchy[0][i][2] != -1 if hierarchy is not None else False
+
+        # Filter out parent contours (building outline, overlapping regions)
+        if has_children:
+            # Count how many children
+            child_count = 0
+            child_idx = hierarchy[0][i][2]
+            while child_idx != -1:
+                child_count += 1
+                child_idx = hierarchy[0][child_idx][0]  # Next sibling
+
+            # Calculate total area of all children
+            child_total_area = 0
+            child_idx = hierarchy[0][i][2]
+            while child_idx != -1 and child_idx < len(contours):
+                child_total_area += cv2.contourArea(contours[child_idx])
+                child_idx = hierarchy[0][child_idx][0]
+
+            child_ratio = child_total_area / area if area > 0 else 0
+
+            # Skip if:
+            # 1. Has multiple children (3+) AND is large (5x min) AND children are significant (>40%)
+            # 2. OR is HUGE (>25% of image) regardless (catches building outline)
+            image_area = image_height * image_width
+            area_ratio = area / image_area if image_area > 0 else 0
+
+            should_skip = False
+            reason = ""
+
+            if child_count >= 3 and area > min_area * 5 and child_ratio > 0.4:
+                should_skip = True
+                reason = f"{child_count} children, area ratio: {child_ratio:.2f}"
+            elif area_ratio > 0.25:  # More than 25% of entire image
+                should_skip = True
+                reason = f"huge parent (>{area_ratio:.1%} of image)"
+
+            if should_skip:
+                logger.info(f"Skipping parent contour {i} - {reason}")
+                continue
+
+        # Detect hallways (long aspect ratio AND reasonable size)
+        # Must be at least 3:1 ratio and decent area
+        is_hallway = aspect_ratio > 3 and area > min_area * 2
+
+        # Filter aspect ratio for rooms (not hallways)
+        if not is_hallway and aspect_ratio > 15:
             continue
 
-        # Calculate confidence based on how rectangular the contour is
-        perimeter = cv2.arcLength(contour, True)
-        approx = cv2.approxPolyDP(contour, 0.04 * perimeter, True)
+        # Calculate confidence
+        normalized_area = area / (image_height * image_width)
 
-        # Confidence: closer to 4 corners = more rectangular = higher confidence
-        confidence = min(1.0, max(0.5, 1.0 - abs(len(approx) - 4) * 0.1))
+        # Penalize extremely large rooms (likely false detections like building outline)
+        if normalized_area > 0.25:  # More than 25% of image
+            confidence = 0.4  # Low confidence for huge rooms
+        else:
+            confidence = min(0.95, max(0.5, normalized_area * 50))
 
         # Normalize coordinates to 0-1000 scale
         x_min = int((x / image_width) * 1000)
@@ -145,39 +313,134 @@ def find_rooms_from_contours(binary_image, min_area=1000, max_area=None):
         x_max = int(((x + w) / image_width) * 1000)
         y_max = int(((y + h) / image_height) * 1000)
 
-        rooms.append({
+        room_data = {
             'bounding_box': [x_min, y_min, x_max, y_max],
             'confidence': round(confidence, 2),
             'area': int(area),
-            'corners': len(approx)
-        })
+            'is_hallway': is_hallway,
+            'aspect_ratio': round(aspect_ratio, 2)
+        }
 
-    logger.info(f"Found {len(rooms)} potential rooms from contours")
-    return rooms
+        if is_hallway:
+            hallways.append(room_data)
+        else:
+            rooms.append(room_data)
+
+    logger.info(f"Found {len(rooms)} rooms and {len(hallways)} hallways after filtering")
+
+    # Combine rooms and hallways
+    all_spaces = rooms + hallways
+    return all_spaces
 
 
-def filter_and_rank_rooms(rooms, max_rooms=20):
+def should_merge_rooms(room1, room2, merge_threshold=0.4):
     """
-    Filter overlapping rooms and rank by confidence and area
+    Determine if two rooms should be merged (likely same room split by noise)
+    """
+    x1_min, y1_min, x1_max, y1_max = room1['bounding_box']
+    x2_min, y2_min, x2_max, y2_max = room2['bounding_box']
+
+    # Calculate intersection
+    inter_x1 = max(x1_min, x2_min)
+    inter_y1 = max(y1_min, y2_min)
+    inter_x2 = min(x1_max, x2_max)
+    inter_y2 = min(y1_max, y2_max)
+
+    if inter_x1 >= inter_x2 or inter_y1 >= inter_y2:
+        # No intersection, check if they're adjacent
+        # Calculate gap between rooms
+        gap_x = max(0, max(x1_min, x2_min) - min(x1_max, x2_max))
+        gap_y = max(0, max(y1_min, y2_min) - min(y1_max, y2_max))
+
+        # If rooms are very close (gap < 5% of average room size), consider merging
+        avg_width = ((x1_max - x1_min) + (x2_max - x2_min)) / 2
+        avg_height = ((y1_max - y1_min) + (y2_max - y2_min)) / 2
+        threshold_gap = min(avg_width, avg_height) * 0.05
+
+        return gap_x <= threshold_gap and gap_y <= threshold_gap
+
+    # Calculate overlap
+    inter_area = (inter_x2 - inter_x1) * (inter_y2 - inter_y1)
+    room1_area = (x1_max - x1_min) * (y1_max - y1_min)
+    room2_area = (x2_max - x2_min) * (y2_max - y2_min)
+
+    # Merge if overlap is significant (but not complete duplicate)
+    overlap_ratio1 = inter_area / room1_area if room1_area > 0 else 0
+    overlap_ratio2 = inter_area / room2_area if room2_area > 0 else 0
+
+    # Merge if there's moderate overlap (likely split room)
+    return (merge_threshold < overlap_ratio1 < 0.9 or
+            merge_threshold < overlap_ratio2 < 0.9)
+
+
+def merge_rooms(room1, room2):
+    """
+    Merge two rooms into one by combining their bounding boxes
+    """
+    x1_min, y1_min, x1_max, y1_max = room1['bounding_box']
+    x2_min, y2_min, x2_max, y2_max = room2['bounding_box']
+
+    merged = {
+        'bounding_box': [
+            min(x1_min, x2_min),
+            min(y1_min, y2_min),
+            max(x1_max, x2_max),
+            max(y1_max, y2_max)
+        ],
+        'confidence': max(room1['confidence'], room2['confidence']),  # Take higher confidence
+        'area': room1['area'] + room2['area'],
+        'corners': min(room1['corners'], room2['corners']),  # More rectangular (fewer corners)
+        'solidity': max(room1.get('solidity', 0.8), room2.get('solidity', 0.8)),
+        'extent': max(room1.get('extent', 0.8), room2.get('extent', 0.8))
+    }
+
+    return merged
+
+
+def filter_and_rank_rooms(rooms, max_rooms=30, min_confidence=0.8):
+    """
+    Filter duplicates and overlapping rooms
+    NO OVERLAPS ALLOWED - remove any room that overlaps significantly with another
+    Also filters out low-confidence detections
     """
     if not rooms:
         return []
 
-    # Sort by confidence and area
-    sorted_rooms = sorted(
-        rooms,
-        key=lambda r: (r['confidence'], r['area']),
-        reverse=True
-    )
+    logger.info(f"Before filtering: {len(rooms)} rooms")
 
-    # Remove heavily overlapping rooms (keep higher confidence ones)
+    # First, filter by confidence threshold (80%)
+    confident_rooms = [r for r in rooms if r.get('confidence', 0) >= min_confidence]
+    logger.info(f"After confidence filter (>={min_confidence}): {len(confident_rooms)} rooms")
+
+    # Second, filter out huge rooms (>25% of image area in normalized coordinates)
+    # Max normalized area is 1000*1000 = 1,000,000, so 25% = 250,000
+    MAX_ROOM_AREA = 250000  # 25% of total image in normalized coordinates
+    size_filtered_rooms = []
+    for room in confident_rooms:
+        x1, y1, x2, y2 = room['bounding_box']
+        room_area = (x2 - x1) * (y2 - y1)
+        if room_area > MAX_ROOM_AREA:
+            logger.info(f"Filtering out huge room: area={room_area} ({room_area/10000:.1f}% of image)")
+            continue
+        size_filtered_rooms.append(room)
+    logger.info(f"After size filter: {len(size_filtered_rooms)} rooms")
+
+    # Sort by area (larger first) - prefer keeping larger rooms
+    sorted_rooms = sorted(size_filtered_rooms, key=lambda r: r['area'], reverse=True)
+
+    # Remove duplicates AND significant overlaps
     filtered_rooms = []
     for room in sorted_rooms:
-        is_overlapping = False
+        has_overlap = False
         x1, y1, x2, y2 = room['bounding_box']
+        room_area = (x2 - x1) * (y2 - y1)
+
+        if room_area == 0:
+            continue
 
         for existing in filtered_rooms:
             ex1, ey1, ex2, ey2 = existing['bounding_box']
+            existing_area = (ex2 - ex1) * (ey2 - ey1)
 
             # Calculate intersection
             inter_x1 = max(x1, ex1)
@@ -187,32 +450,43 @@ def filter_and_rank_rooms(rooms, max_rooms=20):
 
             if inter_x1 < inter_x2 and inter_y1 < inter_y2:
                 inter_area = (inter_x2 - inter_x1) * (inter_y2 - inter_y1)
-                room_area = (x2 - x1) * (y2 - y1)
 
-                # If overlap is more than 70%, consider it duplicate
-                if inter_area / room_area > 0.7:
-                    is_overlapping = True
+                # Calculate overlap ratio for both rooms
+                overlap_ratio_this = inter_area / room_area
+                overlap_ratio_existing = inter_area / existing_area if existing_area > 0 else 0
+
+                # Remove if EITHER room has >5% overlap
+                # This prevents overlapping rooms completely
+                if overlap_ratio_this > 0.05 or overlap_ratio_existing > 0.05:
+                    has_overlap = True
+                    logger.info(f"Removing overlapping room (overlap: {overlap_ratio_this:.1%} / {overlap_ratio_existing:.1%})")
                     break
 
-        if not is_overlapping:
+        if not has_overlap:
             filtered_rooms.append(room)
 
         if len(filtered_rooms) >= max_rooms:
             break
 
-    logger.info(f"Filtered to {len(filtered_rooms)} non-overlapping rooms")
+    logger.info(f"After filtering: {len(filtered_rooms)} rooms (removed overlaps)")
     return filtered_rooms
 
 
 def detect_rooms(image_url, options=None):
     """
     Main room detection pipeline
+
+    Tunable parameters:
+    - min_area: Minimum room area in pixels (default: 800, lower = catch smaller rooms)
+    - max_rooms: Maximum rooms to return (default: 20)
+    - merge_threshold: Threshold for merging adjacent rooms (default: 0.4, lower = more aggressive merging)
     """
     if options is None:
         options = {}
 
-    min_area = options.get('min_area', 1000)
+    min_area = options.get('min_area', 200)  # Even lower to catch all rooms
     max_rooms = options.get('max_rooms', 20)
+    merge_threshold = options.get('merge_threshold', 0.4)
 
     # Download image
     logger.info(f"Downloading blueprint from: {image_url}")
@@ -222,25 +496,44 @@ def detect_rooms(image_url, options=None):
     logger.info("Preprocessing blueprint...")
     gray, binary = preprocess_blueprint(image)
 
-    # Detect walls (for future enhancement - can be used to refine room detection)
+    # Detect walls
     logger.info("Detecting wall lines...")
     horizontal_lines, vertical_lines = detect_walls(binary)
 
-    # Find rooms from contours
-    logger.info("Finding rooms from contours...")
-    rooms = find_rooms_from_contours(binary, min_area=min_area)
+    # Extend lines for open floor plans (helps subdivide open spaces)
+    logger.info("Extending lines to subdivide open floor plans...")
+    enhanced_binary = extend_lines_for_open_plans(binary, horizontal_lines, vertical_lines)
 
-    # Filter and rank
+    # Find rooms from contours (using enhanced binary with extended lines)
+    logger.info("Finding rooms from contours...")
+    rooms = find_rooms_from_contours(enhanced_binary, min_area=min_area)
+
+    # Filter and rank (pass merge_threshold to filtering)
     logger.info("Filtering and ranking rooms...")
+    # Update filter_and_rank_rooms to use merge_threshold
     filtered_rooms = filter_and_rank_rooms(rooms, max_rooms=max_rooms)
 
     # Format output to match expected API response
     result_rooms = []
-    for i, room in enumerate(filtered_rooms):
+    room_count = 0
+    hallway_count = 0
+
+    for room in filtered_rooms:
+        is_hallway = room.get('is_hallway', False)
+
+        if is_hallway:
+            hallway_count += 1
+            name_hint = f'Hallway {hallway_count}'
+            room_id = f'hallway_{str(hallway_count).zfill(3)}'
+        else:
+            room_count += 1
+            name_hint = f'Room {room_count}'
+            room_id = f'room_{str(room_count).zfill(3)}'
+
         result_rooms.append({
-            'id': f'room_{str(i + 1).zfill(3)}',
+            'id': room_id,
             'bounding_box': room['bounding_box'],
-            'name_hint': f'Room {i + 1}',  # Basic naming - can be enhanced with OCR
+            'name_hint': name_hint,
             'confidence': room['confidence']
         })
 

@@ -82,4 +82,27 @@ See `SETUP_BLUEPRINT_DETECTION.md` for complete details, troubleshooting, and ad
 🟢 **Node.js Server:** Ready to accept requests
 🟢 **Client:** Can upload and import blueprints
 
+## Recent Improvements (v2)
+
+✅ **Smart room merging** - Automatically detects and merges rooms split by noise
+✅ **Better preprocessing** - Morphological closing to connect broken walls
+✅ **Improved scoring** - Uses solidity + extent metrics for better quality
+✅ **Lower min_area default** - Now 800 (was 1000) to catch more rooms
+✅ **Inverted detection** - Detects white spaces (rooms) instead of black (walls)
+
+## Tuning If Needed
+
+**Missing rooms?** Lower `min_area`:
+```bash
+# In Node.js server call (or edit python-vision-service/app.py line 355)
+options: { min_area: 500 }
+```
+
+**Rooms still splitting?** Increase closing kernel (edit `app.py` line 60):
+```python
+kernel_close = np.ones((7, 7), np.uint8)  # Increase from (5,5)
+```
+
+**See `python-vision-service/TUNING_GUIDE.md` for complete tuning reference.**
+
 **Next:** Test with actual blueprint images to fine-tune detection parameters.
