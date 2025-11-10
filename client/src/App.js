@@ -976,8 +976,9 @@ export class App {
   async importDetectedRooms(blueprintId, detectedRooms) {
     console.log('Importing detected rooms:', detectedRooms);
 
+    const importedRooms = [];
+
     try {
-      const importedRooms = [];
 
       // Define the world space dimensions for the blueprint
       // Map the 0-1000 normalized coordinates to a reasonable world size
@@ -1086,11 +1087,19 @@ export class App {
 
     } catch (error) {
       console.error('Error importing detected rooms:', error);
-      this.uiManager.showNotification(
-        `Failed to import rooms: ${error.message}`,
-        'error'
-      );
-      throw error;
+      // Only show error if NO rooms were imported successfully
+      if (importedRooms.length === 0) {
+        this.uiManager.showNotification(
+          `Failed to import rooms: ${error.message}`,
+          'error'
+        );
+      } else {
+        // Some rooms succeeded, show warning instead
+        this.uiManager.showNotification(
+          `Imported ${importedRooms.length} room(s), but some failed. Check console for details.`,
+          'warning'
+        );
+      }
     }
   }
 
