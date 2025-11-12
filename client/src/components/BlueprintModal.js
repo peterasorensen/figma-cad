@@ -228,7 +228,10 @@ export class BlueprintModal {
       formData.append('blueprint', file);
       formData.append('canvasId', this.app.currentCanvasId || 'default');
 
-      const uploadResponse = await fetch('http://localhost:3001/api/blueprints/upload', {
+      // Get the server URL from environment or default to localhost:3001
+      const serverUrl = import.meta.env.VITE_SERVER_URL || 'http://localhost:3001';
+
+      const uploadResponse = await fetch(`${serverUrl}/api/blueprints/upload`, {
         method: 'POST',
         body: formData
       });
@@ -264,8 +267,11 @@ export class BlueprintModal {
         this.updateProgress(data);
       });
 
+      // Get the server URL from environment or default to localhost:3001
+      const serverUrl = import.meta.env.VITE_SERVER_URL || 'http://localhost:3001';
+
       // Trigger detection
-      const response = await fetch('http://localhost:3001/api/blueprints/detect-rooms', {
+      const response = await fetch(`${serverUrl}/api/blueprints/detect-rooms`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'

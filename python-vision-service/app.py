@@ -11,6 +11,7 @@ from PIL import Image
 import io
 import requests
 import logging
+import pytesseract
 
 app = Flask(__name__)
 CORS(app)
@@ -472,6 +473,147 @@ def filter_and_rank_rooms(rooms, max_rooms=30, min_confidence=0.8):
     return filtered_rooms
 
 
+def preprocess_for_ocr(image):
+    """
+    Preprocess image for OCR while preserving text readability
+    Uses gentler preprocessing than room detection pipeline
+    """
+    # Convert to grayscale
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+
+    # Apply mild denoising to reduce noise but preserve text
+    denoised = cv2.bilateralFilter(gray, 5, 50, 50)
+
+    # Enhance contrast for better text recognition
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
+    enhanced = clahe.apply(denoised)
+
+    # Apply mild thresholding to create binary image for OCR
+    binary = cv2.adaptiveThreshold(
+        enhanced,
+        255,
+        cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+        cv2.THRESH_BINARY,
+        11,
+        2
+    )
+
+    return gray, binary
+
+
+def detect_text_regions(image):
+    """
+    Detect text regions in the blueprint using pytesseract
+    Returns list of text detections with bounding boxes and confidence
+    """
+    try:
+        # Preprocess image for OCR
+        gray, binary = preprocess_for_ocr(image)
+
+        # Get image dimensions for coordinate normalization
+        height, width = image.shape[:2]
+
+        # Configure tesseract for better blueprint text recognition
+        custom_config = r'--oem 3 --psm 11 -c tessedit_char_whitelist=0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz '
+
+        # Get detailed OCR data including bounding boxes and confidence
+        data = pytesseract.image_to_data(binary, config=custom_config, output_type=pytesseract.Output.DICT)
+
+        text_regions = []
+
+        # Process each detected text region
+        for i, text in enumerate(data['text']):
+            # Skip empty text or very low confidence
+            if not text.strip() or data['conf'][i] < 30:
+                continue
+
+            # Get bounding box coordinates
+            x, y, w, h = data['left'][i], data['top'][i], data['width'][i], data['height'][i]
+
+            # Skip very small text regions (likely noise)
+            if w < 10 or h < 10:
+                continue
+
+            # Normalize coordinates to 0-1000 scale to match room coordinates
+            x_min = int((x / width) * 1000)
+            y_min = int((y / height) * 1000)
+            x_max = int(((x + w) / width) * 1000)
+            y_max = int(((y + h) / height) * 1000)
+
+            text_regions.append({
+                'text': text.strip(),
+                'bounding_box': [x_min, y_min, x_max, y_max],
+                'confidence': data['conf'][i],
+                'center_x': (x_min + x_max) // 2,
+                'center_y': (y_min + y_max) // 2
+            })
+
+        logger.info(f"Detected {len(text_regions)} text regions via OCR")
+        return text_regions
+
+    except Exception as e:
+        logger.error(f"OCR failed: {e}")
+        return []
+
+
+def associate_text_with_rooms(rooms, text_regions, max_distance=150):
+    """
+    Associate detected text with room boundaries using spatial proximity
+    """
+    if not text_regions:
+        return rooms
+
+    # Sort text regions by confidence (highest first)
+    sorted_text = sorted(text_regions, key=lambda x: x['confidence'], reverse=True)
+
+    # Create a copy of rooms to modify
+    rooms_with_text = []
+
+    for room in rooms:
+        room_copy = room.copy()
+        room_center_x = (room['bounding_box'][0] + room['bounding_box'][2]) // 2
+        room_center_y = (room['bounding_box'][1] + room['bounding_box'][3]) // 2
+
+        # Find closest text that hasn't been used yet
+        best_text = None
+        best_distance = float('inf')
+        best_text_idx = -1
+
+        for i, text_region in enumerate(sorted_text):
+            text_center_x = text_region['center_x']
+            text_center_y = text_region['center_y']
+
+            # Calculate Euclidean distance
+            distance = ((text_center_x - room_center_x) ** 2 + (text_center_y - room_center_y) ** 2) ** 0.5
+
+            # Check if text is within the room boundaries (with some tolerance)
+            room_x1, room_y1, room_x2, room_y2 = room['bounding_box']
+            text_in_room = (text_region['bounding_box'][0] >= room_x1 - 50 and
+                          text_region['bounding_box'][1] >= room_y1 - 50 and
+                          text_region['bounding_box'][2] <= room_x2 + 50 and
+                          text_region['bounding_box'][3] <= room_y2 + 50)
+
+            # Prefer text inside room, but allow nearby text if within distance limit
+            if (text_in_room or distance <= max_distance) and distance < best_distance:
+                best_distance = distance
+                best_text = text_region
+                best_text_idx = i
+
+        if best_text:
+            # Use the detected text as room name
+            room_copy['detected_name'] = best_text['text']
+            room_copy['text_confidence'] = best_text['confidence']
+            # Remove this text from available list
+            sorted_text.pop(best_text_idx)
+        else:
+            room_copy['detected_name'] = None
+            room_copy['text_confidence'] = 0
+
+        rooms_with_text.append(room_copy)
+
+    return rooms_with_text
+
+
 def detect_rooms(image_url, options=None):
     """
     Main room detection pipeline
@@ -513,29 +655,55 @@ def detect_rooms(image_url, options=None):
     # Update filter_and_rank_rooms to use merge_threshold
     filtered_rooms = filter_and_rank_rooms(rooms, max_rooms=max_rooms)
 
+    # OCR: Detect text regions and associate with rooms
+    logger.info("Detecting text labels via OCR...")
+    text_regions = detect_text_regions(image)
+    rooms_with_text = associate_text_with_rooms(filtered_rooms, text_regions)
+
     # Format output to match expected API response
     result_rooms = []
     room_count = 0
     hallway_count = 0
 
-    for room in filtered_rooms:
+    for room in rooms_with_text:
         is_hallway = room.get('is_hallway', False)
+
+        # Use detected name from OCR if available and confident enough
+        detected_name = room.get('detected_name')
+        text_confidence = room.get('text_confidence', 0)
 
         if is_hallway:
             hallway_count += 1
-            name_hint = f'Hallway {hallway_count}'
-            room_id = f'hallway_{str(hallway_count).zfill(3)}'
+            # Use detected name for hallways too if available
+            if detected_name and text_confidence > 60:
+                name_hint = detected_name
+                room_id = f'hallway_{detected_name.lower().replace(" ", "_")}_{str(hallway_count).zfill(2)}'
+            else:
+                name_hint = f'Hallway {hallway_count}'
+                room_id = f'hallway_{str(hallway_count).zfill(3)}'
         else:
             room_count += 1
-            name_hint = f'Room {room_count}'
-            room_id = f'room_{str(room_count).zfill(3)}'
+            # Use detected name if OCR found it with good confidence
+            if detected_name and text_confidence > 60:
+                name_hint = detected_name
+                room_id = f'room_{detected_name.lower().replace(" ", "_")}_{str(room_count).zfill(2)}'
+            else:
+                name_hint = f'Room {room_count}'
+                room_id = f'room_{str(room_count).zfill(3)}'
 
-        result_rooms.append({
+        room_result = {
             'id': room_id,
             'bounding_box': room['bounding_box'],
             'name_hint': name_hint,
             'confidence': room['confidence']
-        })
+        }
+
+        # Include OCR info if detected
+        if detected_name:
+            room_result['detected_name'] = detected_name
+            room_result['text_confidence'] = text_confidence
+
+        result_rooms.append(room_result)
 
     logger.info(f"Detection complete: {len(result_rooms)} rooms")
     return result_rooms
@@ -550,7 +718,7 @@ def health():
 @app.route('/detect-rooms', methods=['POST'])
 def detect_rooms_endpoint():
     """
-    Detect rooms from blueprint image
+    Detect rooms from blueprint image with OCR text recognition
 
     Request body:
     {
@@ -567,11 +735,20 @@ def detect_rooms_endpoint():
             {
                 "id": "room_001",
                 "bounding_box": [x_min, y_min, x_max, y_max],
-                "name_hint": "Room 1",
-                "confidence": 0.85
+                "name_hint": "Kitchen",
+                "confidence": 0.85,
+                "detected_name": "Kitchen",
+                "text_confidence": 78.5
             }
-        ]
+        ],
+        "count": 1
     }
+
+    OCR Features:
+    - Automatically detects room labels from blueprint text
+    - Associates text with detected room boundaries
+    - Falls back to generic names ("Room 1", "Room 2") when OCR fails
+    - Includes OCR confidence scores for quality assessment
     """
     try:
         data = request.get_json()

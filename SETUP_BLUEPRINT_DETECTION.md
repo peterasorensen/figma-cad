@@ -228,7 +228,7 @@ const WORLD_OFFSET_Z = -10;   // Adjust to center vertically
 
 ## Future Enhancements
 
-- [ ] **OCR** for room labels (Tesseract integration)
+- ✅ **OCR** for room labels (Tesseract integration)
 - [ ] **Better wall reconstruction** (merge line segments)
 - [ ] **Non-rectangular rooms** (polygon detection)
 - [ ] **Multi-floor support** (layer detection)

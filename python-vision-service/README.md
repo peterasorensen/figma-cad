@@ -4,9 +4,11 @@ Python microservice for detecting room boundaries from architectural blueprints 
 
 ## Overview
 
-This service uses proper computer vision techniques (not LLMs) to detect rooms:
+This service uses computer vision and OCR to detect and label rooms:
 - **Line Detection**: Hough transform to identify wall lines
 - **Contour Analysis**: Finds enclosed spaces (rooms)
+- **OCR Integration**: Tesseract OCR to read room labels and names
+- **Text Association**: Spatially associates detected text with room boundaries
 - **Bounding Box Extraction**: Returns normalized coordinates for each room
 
 ## Installation
@@ -70,10 +72,12 @@ Response:
 {
   "rooms": [
     {
-      "id": "room_001",
+      "id": "room_kitchen_01",
       "bounding_box": [100, 100, 400, 350],
-      "name_hint": "Room 1",
-      "confidence": 0.92
+      "name_hint": "Kitchen",
+      "confidence": 0.92,
+      "detected_name": "Kitchen",
+      "text_confidence": 78.5
     }
   ],
   "count": 1
@@ -93,8 +97,10 @@ Response:
    - Remove contours that are too small/large
    - Remove thin rectangles (likely walls)
    - Remove overlapping duplicates
-6. **Ranking**: Sort by confidence and area
-7. **Normalization**: Convert coordinates to 0-1000 scale
+6. **OCR Processing**: Tesseract OCR detects room labels and text
+7. **Text Association**: Spatially associates detected text with room boundaries
+8. **Ranking**: Sort by confidence and area
+9. **Normalization**: Convert coordinates to 0-1000 scale
 
 ## Configuration
 
@@ -119,12 +125,19 @@ curl -X POST http://localhost:5000/detect-rooms \
   }'
 ```
 
+## Features
+
+- ✅ **OCR Integration**: Tesseract OCR for reading room labels and text
+- ✅ **Computer Vision**: OpenCV-based room boundary detection
+- ✅ **Text Association**: Intelligent spatial association of detected text with rooms
+- ✅ **Fallback Logic**: Graceful fallback to generic naming when OCR fails
+
 ## Future Enhancements
 
-- [ ] OCR for room labels/numbers (using Tesseract)
 - [ ] Better wall line reconstruction
 - [ ] Support for curved/angled rooms
 - [ ] Multi-floor blueprint support
+- [ ] Enhanced OCR for dimensions and measurements
 - [ ] Room type classification (kitchen, bedroom, etc.)
 
 ## Troubleshooting
